@@ -35,7 +35,8 @@ src/psrolab/
   psro.py            the PSRO loop (~100 lines; printed in full in Ch. 5)
   games/             MatrixGame, SimGame interface, matrix wrapper (+ OpenSpiel, pursuit-evasion later)
   oracles/           best-response oracles: exact (now), tabular-Q, PPO, diverse-PPO
-  meta_solvers/      uniform, Nash-LP (now), alpha-Rank, CE/CCE, replicator
+  meta_solvers/      uniform, Nash-LP, support enumeration (now), alpha-Rank, CE/CCE, replicator
+  baselines/         fictitious play (now); self-play, last-k (Ch. 12)
   eval/              empirical-game evaluator w/ caching; exploitability metrics
 experiments/         one folder per book chapter; scripts emit CSVs + figures
 tests/               invariant tests — must always pass
@@ -45,7 +46,8 @@ CLAUDE.md            build instructions for Claude Code (milestones M1–M6)
 ## Status
 
 - [x] Core interfaces + PSRO loop, tested (PSRO ≡ double oracle on matrix games)
-- [ ] M1 Part I experiments — see CLAUDE.md
+- [x] M1 Part I experiments (ch02 Nash from scratch, ch03 fictitious play,
+      ch04 double oracle) — `python experiments/chXX_*/run_chXX.py [--smoke]`
 - [ ] M2 RL oracles + Kuhn/Leduc
 - [ ] M3 meta-solver zoo
 - [ ] M4 variants under equal budget

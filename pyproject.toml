@@ -19,7 +19,7 @@ dependencies = [
 [project.optional-dependencies]
 rl = [
     "torch>=2.2",         # neural best-response oracles (Part II+)
-    "open_spiel>=1.4",    # Kuhn/Leduc poker, reference implementations
+    "open_spiel==2.0.1",  # Kuhn/Leduc + exploitability calculator; pinned (CLAUDE.md)
 ]
 distributed = [
     "ray>=2.9",           # Pipeline PSRO, parallel BR training (Part III)

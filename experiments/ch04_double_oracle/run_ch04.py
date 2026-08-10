@@ -41,7 +41,7 @@ import numpy as np
 from psrolab import run_psro
 from psrolab.eval import ProfileEvaluator, restricted_exploitability
 from psrolab.games import ExactMatrixOracle, MatrixGame, MatrixGameSim, Population
-from psrolab.meta_solvers import NashSolverLP
+from psrolab.meta_solvers import ZeroSumProjectionNash
 
 HERE = Path(__file__).resolve().parent
 CONVERGENCE_TOL = 1e-6
@@ -129,22 +129,6 @@ def exploitability_callback(game: MatrixGame):
         }
 
     return callback
-
-
-class ZeroSumProjectionNash(NashSolverLP):
-    """Nash LP on the nearest zero-sum game to a noisy empirical game.
-
-    Sampled payoff tables are never *exactly* zero-sum: each player's returns
-    carry independent estimation noise, and NashSolverLP (rightly) refuses
-    non-zero-sum input. Averaging the two players' estimates,
-    a_hat = (payoffs_0 - payoffs_1) / 2, projects back onto the zero-sum
-    subspace and halves the noise variance for free. Every sampled-payoff PSRO
-    run in later chapters needs this trick; Ch. 4 is where the book introduces it.
-    """
-
-    def solve(self, game: MatrixGame) -> list[np.ndarray]:
-        a_hat = 0.5 * (game.payoffs[0] - game.payoffs[1])
-        return super().solve(MatrixGame(payoffs=np.stack([a_hat, -a_hat])))
 
 
 def run_double_oracle(

@@ -55,7 +55,8 @@ CLAUDE.md            build instructions for Claude Code (milestones M1–M6)
       ch04 double oracle) — `python experiments/chXX_*/run_chXX.py [--smoke]`
 - [x] M2 RL oracles + Kuhn/Leduc (OpenSpiel wrapper, tabular-Q + PPO oracles,
       exact full-game exploitability; ch06 grid + ch07 Leduc baseline)
-- [ ] M3 meta-solver zoo
+- [x] M3 meta-solver zoo (alpha-Rank validated vs OpenSpiel, regret matching,
+      projected replicator; ch08 five-solver comparison + runtime table)
 - [ ] M4 variants under equal budget
 - [ ] M5 pursuit-evasion capstone
 - [ ] M6 CI + figure manifest

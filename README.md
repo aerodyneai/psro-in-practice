@@ -57,6 +57,8 @@ CLAUDE.md            build instructions for Claude Code (milestones M1–M6)
       exact full-game exploitability; ch06 grid + ch07 Leduc baseline)
 - [x] M3 meta-solver zoo (alpha-Rank validated vs OpenSpiel, regret matching,
       projected replicator; ch08 five-solver comparison + runtime table)
-- [ ] M4 variants under equal budget
+- [x] M4 variants under equal budget (parallel PSRO + Ray, diverse-PPO,
+      self-play/last-k baselines; ch10 speedup, ch11 diversity ablation,
+      ch12 shootout table)
 - [ ] M5 pursuit-evasion capstone
 - [ ] M6 CI + figure manifest

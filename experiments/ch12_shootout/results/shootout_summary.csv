@@ -1,0 +1,15 @@
+game,variant,mean_full_exploitability,std_full_exploitability,n_seeds
+cyclic,last_k,0.981934,0.006012,5
+cyclic,psro_alpharank,0.143831,0.040300,5
+cyclic,psro_diverse,0.066768,0.022114,5
+cyclic,psro_nash,0.049638,0.022713,5
+cyclic,psro_rm,0.053870,0.031331,5
+cyclic,psro_uniform,0.344379,0.031623,5
+cyclic,self_play,0.990456,0.000767,5
+leduc,last_k,1.828262,0.137590,5
+leduc,psro_alpharank,1.449212,0.021594,5
+leduc,psro_diverse,1.380564,0.051995,5
+leduc,psro_nash,1.411364,0.068574,5
+leduc,psro_rm,1.374054,0.043319,5
+leduc,psro_uniform,1.558520,0.022351,5
+leduc,self_play,1.366791,0.080365,5

@@ -49,22 +49,24 @@ class OpenSpielGame(SimGame):
     """A 2-player sequential OpenSpiel game as a SimGame.
 
     Args:
-        game_name: pyspiel short name, e.g. "kuhn_poker", "leduc_poker".
+        game: pyspiel short name (e.g. "kuhn_poker", "leduc_poker") or an
+            already-constructed pyspiel.Game — e.g. a custom matrix game passed
+            through pyspiel.convert_to_turn_based (Ch. 11 does exactly this).
         seed: seeds the initial (uniform-random) policies only; episode
             randomness comes from the rng passed to `sample_returns`.
     """
 
-    def __init__(self, game_name: str, seed: int = 0) -> None:
+    def __init__(self, game, seed: int = 0) -> None:
         import pyspiel
 
-        self.raw_game = pyspiel.load_game(game_name)
+        self.raw_game = pyspiel.load_game(game) if isinstance(game, str) else game
         game_type = self.raw_game.get_type()
         assert game_type.dynamics == pyspiel.GameType.Dynamics.SEQUENTIAL, (
             "OpenSpielGame supports sequential games only"
         )
         self.n_players = self.raw_game.num_players()
         assert self.n_players == 2, "psrolab is 2-player for now"
-        self.game_name = game_name
+        self.game_name = self.raw_game.get_type().short_name
         self._seed = seed
         self._use_info_state = (
             game_type.provides_information_state_tensor

@@ -52,6 +52,8 @@ def run_psro_parallel(
     episodes_per_profile: int = 100,
     seed: int = 0,
     callbacks: list[Callable[[int, Population, list[np.ndarray]], dict]] | None = None,
+    start_iteration: int = 0,
+    initial_population: Population | None = None,
 ) -> PSROResult:
     """Run parallel PSRO. See module docstring for the delta vs `run_psro`.
 
@@ -61,6 +63,13 @@ def run_psro_parallel(
             boundaries; oracles may hold device state).
         n_workers: Ray worker count; 0 = run the identical schedule serially
             (no ray import), useful for tests and CPU-only CI.
+        start_iteration / initial_population: resume support (Ch. 14). Pass a
+            checkpointed Population (policies + payoff table) and the
+            iteration it was saved at; because every cell and BR seed is keyed
+            by (iteration, ...) rather than drawn from a running stream, the
+            resumed run's remaining work replays EXACTLY what the
+            uninterrupted run would have done — bit-identical final tables.
+            `n_iterations` still counts total iterations from 0.
     """
     if n_workers > 0:
         import ray
@@ -71,11 +80,14 @@ def run_psro_parallel(
 
     game = game_factory()
     root_seq = np.random.SeedSequence(seed)
-    population = Population(policies=[[p] for p in game.initial_policies()])
+    if initial_population is None:
+        population = Population(policies=[[p] for p in game.initial_policies()])
+    else:
+        population = initial_population
     history: list[dict] = []
     meta_strategies: list[np.ndarray] = [np.ones(1) for _ in range(game.n_players)]
 
-    for it in range(n_iterations):
+    for it in range(start_iteration, n_iterations):
         # 1. Evaluate empirical game — parallel over unevaluated cells.
         _fill_parallel(game_factory, game, population, episodes_per_profile,
                        root_seq, it, n_workers)

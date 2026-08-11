@@ -60,5 +60,7 @@ CLAUDE.md            build instructions for Claude Code (milestones M1–M6)
 - [x] M4 variants under equal budget (parallel PSRO + Ray, diverse-PPO,
       self-play/last-k baselines; ch10 speedup, ch11 diversity ablation,
       ch12 shootout table)
-- [ ] M5 pursuit-evasion capstone
+- [x] M5 pursuit-evasion capstone (balanced 2D game with mixed equilibrium,
+      full PSRO run with trajectory/support/proxy figures; ch14 cache,
+      checkpoint/resume, cost-anatomy engineering studies)
 - [ ] M6 CI + figure manifest

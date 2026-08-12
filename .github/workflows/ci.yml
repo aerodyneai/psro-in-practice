@@ -1,0 +1,65 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # Pins the CLAUDE.md rule-3 invariant: the test suite passes with ONLY base
+  # deps installed (RL tests must skip cleanly), and the base-deps experiment
+  # scripts run in --smoke mode without touching any tracked file.
+  base:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install base + dev deps only
+        run: pip install -e ".[dev]"
+      - name: Lint
+        run: ruff check src tests experiments
+      - name: Tests (RL tests must skip, not fail)
+        run: pytest tests/ -q
+      - name: Smoke experiments (base-deps scripts)
+        run: |
+          python experiments/ch02_nash_from_scratch/run_ch02.py --smoke
+          python experiments/ch03_fictitious_play/run_ch03.py --smoke
+          python experiments/ch04_double_oracle/run_ch04.py --smoke
+          python experiments/ch14_engineering/run_ch14.py --smoke
+      - name: Working tree must stay clean (smoke never writes tracked paths)
+        run: |
+          git status --porcelain
+          test -z "$(git status --porcelain)"
+
+  full:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install CPU-only torch (CI needs no CUDA wheels)
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Install all extras
+        run: pip install -e ".[rl,distributed,dev]"
+      - name: Full test suite
+        run: pytest tests/ -q
+      - name: Smoke every experiment path (CLAUDE.md rule 6)
+        run: |
+          python experiments/ch02_nash_from_scratch/run_ch02.py --smoke
+          python experiments/ch03_fictitious_play/run_ch03.py --smoke
+          python experiments/ch04_double_oracle/run_ch04.py --smoke
+          python experiments/ch06_ppo_oracle/run_ch06.py --smoke
+          python experiments/ch07_kuhn_leduc/run_ch07.py --smoke
+          python experiments/ch08_meta_solvers/run_ch08.py --smoke
+          python experiments/ch10_pipeline/run_ch10.py --smoke
+          python experiments/ch11_diversity/run_ch11.py --smoke
+          python experiments/ch12_shootout/run_ch12.py --smoke
+          python experiments/ch13_pursuit_evasion/run_ch13.py --smoke
+          python experiments/ch14_engineering/run_ch14.py --smoke
+      - name: Working tree must stay clean (smoke never writes tracked paths)
+        run: |
+          git status --porcelain
+          test -z "$(git status --porcelain)"

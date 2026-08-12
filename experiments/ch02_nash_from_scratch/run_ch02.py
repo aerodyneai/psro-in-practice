@@ -55,11 +55,15 @@ SIMPLEX_VERTICES = np.array([[0.0, 0.0], [1.0, 0.0], [0.5, np.sqrt(3) / 2]])
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--seed", type=int, default=0, help="unused; solvers are exact")
-    parser.parse_args()
+    parser.add_argument("--smoke", action="store_true",
+                        help="write to gitignored *_smoke dirs (config unchanged; "
+                             "the full run is already <60s)")
+    args = parser.parse_args()
     plt.switch_backend("Agg")
 
-    results_dir = HERE / "results"
-    figures_dir = HERE / "figures"
+    suffix = "_smoke" if args.smoke else ""
+    results_dir = HERE / f"results{suffix}"
+    figures_dir = HERE / f"figures{suffix}"
     results_dir.mkdir(exist_ok=True)
     figures_dir.mkdir(exist_ok=True)
 

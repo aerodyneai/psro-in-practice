@@ -80,8 +80,9 @@ def main() -> None:
     print(f"Estimated runtime: ~{sum(max(serial_min / min(w, 2), serial_min / 3) for w in worker_counts):.0f} min "
           f"(workers {worker_counts})", flush=True)
 
-    results_dir = HERE / "results"
-    figures_dir = HERE / "figures"
+    suffix = "_smoke" if args.smoke else ""
+    results_dir = HERE / f"results{suffix}"
+    figures_dir = HERE / f"figures{suffix}"
     results_dir.mkdir(exist_ok=True)
     figures_dir.mkdir(exist_ok=True)
 

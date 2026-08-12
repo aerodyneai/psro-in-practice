@@ -83,8 +83,9 @@ def main() -> None:
                * 9e-3 + args.iterations**2 * args.eval_episodes * 4e-3) / 60
     print(f"Estimated runtime: ~{max(est_min, 0.3):.0f} min", flush=True)
 
-    results_dir = HERE / "results"
-    figures_dir = HERE / "figures"
+    suffix = "_smoke" if args.smoke else ""
+    results_dir = HERE / f"results{suffix}"
+    figures_dir = HERE / f"figures{suffix}"
     results_dir.mkdir(exist_ok=True)
     figures_dir.mkdir(exist_ok=True)
 

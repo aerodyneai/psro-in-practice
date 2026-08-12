@@ -64,8 +64,9 @@ def main() -> None:
     print(f"Estimated runtime: ~{max(args.n_seeds * per_seed_min, 0.3):.0f} min "
           f"({args.iterations} iterations, {args.n_seeds} seed(s))", flush=True)
 
-    results_dir = HERE / "results"
-    figures_dir = HERE / "figures"
+    suffix = "_smoke" if args.smoke else ""
+    results_dir = HERE / f"results{suffix}"
+    figures_dir = HERE / f"figures{suffix}"
     results_dir.mkdir(exist_ok=True)
     figures_dir.mkdir(exist_ok=True)
 

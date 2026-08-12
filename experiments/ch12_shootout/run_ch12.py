@@ -93,8 +93,9 @@ def main() -> None:
     print(f"Estimated runtime: ~{est_h:.1f} h "
           f"({len(variants)} variants x {args.n_seeds} seeds x {games})", flush=True)
 
-    results_dir = HERE / "results"
-    figures_dir = HERE / "figures"
+    suffix = "_smoke" if args.smoke else ""
+    results_dir = HERE / f"results{suffix}"
+    figures_dir = HERE / f"figures{suffix}"
     results_dir.mkdir(exist_ok=True)
     figures_dir.mkdir(exist_ok=True)
 

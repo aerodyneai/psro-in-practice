@@ -11,3 +11,6 @@ dist/
 # contract, not committed binaries. CSVs are small and committed for the book.
 experiments/*/figures/*.png
 experiments/*/figures/*.pdf
+# --smoke outputs (CI runs must never touch the tracked results/ CSVs)
+experiments/*/results_smoke/
+experiments/*/figures_smoke/

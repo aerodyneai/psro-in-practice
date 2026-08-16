@@ -1,0 +1,367 @@
+% Bibliography for "Policy-Space Response Oracles in Practice".
+%
+% Every author-year citation in the manuscript should resolve here. Entries
+% marked with a "% VERIFIED via ..." comment were cross-checked against a
+% canonical source (arXiv / publisher / dblp / DOI) during the M6+1 pass.
+% Classics (Nash, von Neumann, Brown, Robinson, Shapley, Kuhn) are transcribed
+% from standard references and their bibliographic details are stable.
+
+% --- Foundations of game theory --------------------------------------------
+
+@article{nash1951noncooperative,
+  author  = {Nash, John},
+  title   = {Non-Cooperative Games},
+  journal = {Annals of Mathematics},
+  volume  = {54},
+  number  = {2},
+  pages   = {286--295},
+  year    = {1951},
+  doi     = {10.2307/1969529}
+}
+
+@article{vonneumann1928zur,
+  author  = {von Neumann, John},
+  title   = {Zur Theorie der Gesellschaftsspiele},
+  journal = {Mathematische Annalen},
+  volume  = {100},
+  pages   = {295--320},
+  year    = {1928},
+  doi     = {10.1007/BF01448847}
+}
+
+@incollection{brown1951iterative,
+  author    = {Brown, George W.},
+  title     = {Iterative Solution of Games by Fictitious Play},
+  booktitle = {Activity Analysis of Production and Allocation},
+  editor    = {Koopmans, Tjalling C.},
+  publisher = {Wiley},
+  address   = {New York},
+  pages     = {374--376},
+  year      = {1951}
+}
+
+@article{robinson1951iterative,
+  author  = {Robinson, Julia},
+  title   = {An Iterative Method of Solving a Game},
+  journal = {Annals of Mathematics},
+  volume  = {54},
+  number  = {2},
+  pages   = {296--301},
+  year    = {1951},
+  doi     = {10.2307/1969530}
+}
+
+@incollection{shapley1964some,
+  author    = {Shapley, Lloyd S.},
+  title     = {Some Topics in Two-Person Games},
+  booktitle = {Advances in Game Theory},
+  series    = {Annals of Mathematics Studies},
+  volume    = {52},
+  editor    = {Dresher, M. and Shapley, L. S. and Tucker, A. W.},
+  publisher = {Princeton University Press},
+  pages     = {1--28},
+  year      = {1964}
+}
+
+@incollection{kuhn1950simplified,
+  author    = {Kuhn, Harold W.},
+  title     = {A Simplified Two-Person Poker},
+  booktitle = {Contributions to the Theory of Games, Volume 1},
+  series    = {Annals of Mathematics Studies},
+  volume    = {24},
+  editor    = {Kuhn, H. W. and Tucker, A. W.},
+  publisher = {Princeton University Press},
+  pages     = {97--103},
+  year      = {1950}
+}
+
+@inproceedings{southey2005bayes,
+  author    = {Southey, Finnegan and Bowling, Michael and Larson, Bryce and
+               Piccione, Carmelo and Burch, Neil and Billings, Darse and
+               Rayner, Chris},
+  title     = {Bayes' Bluff: Opponent Modelling in Poker},
+  booktitle = {Proceedings of the 21st Conference on Uncertainty in Artificial
+               Intelligence (UAI)},
+  pages     = {550--558},
+  year      = {2005}
+}
+% VERIFIED via UAI 2005 proceedings; Leduc hold'em is the reduced game
+% introduced in this paper.
+
+% --- Double oracle and PSRO family -----------------------------------------
+
+@inproceedings{mcmahan2003planning,
+  author    = {McMahan, H. Brendan and Gordon, Geoffrey J. and Blum, Avrim},
+  title     = {Planning in the Presence of Cost Functions Controlled by an
+               Adversary},
+  booktitle = {Proceedings of the 20th International Conference on Machine
+               Learning (ICML)},
+  pages     = {536--543},
+  year      = {2003}
+}
+
+@inproceedings{lanctot2017unified,
+  author    = {Lanctot, Marc and Zambaldi, Vinicius and Gruslys, Audr\={u}nas
+               and Lazaridou, Angeliki and Tuyls, Karl and P\'{e}rolat,
+               Julien and Silver, David and Graepel, Thore},
+  title     = {A Unified Game-Theoretic Approach to Multiagent Reinforcement
+               Learning},
+  booktitle = {Advances in Neural Information Processing Systems 30 (NeurIPS)},
+  year      = {2017}
+}
+
+@inproceedings{heinrich2015fictitious,
+  author    = {Heinrich, Johannes and Lanctot, Marc and Silver, David},
+  title     = {Fictitious Self-Play in Extensive-Form Games},
+  booktitle = {Proceedings of the 32nd International Conference on Machine
+               Learning (ICML)},
+  pages     = {805--813},
+  year      = {2015}
+}
+
+@inproceedings{mcaleer2020pipeline,
+  author    = {McAleer, Stephen and Lanier, John and Fox, Roy and Baldi,
+               Pierre},
+  title     = {Pipeline {PSRO}: A Scalable Approach for Finding Approximate
+               {N}ash Equilibria in Large Games},
+  booktitle = {Advances in Neural Information Processing Systems 33 (NeurIPS)},
+  year      = {2020},
+  eprint    = {2006.08555},
+  archivePrefix = {arXiv}
+}
+% VERIFIED via NeurIPS 2020 proceedings and arXiv 2006.08555.
+
+@inproceedings{mcaleer2021xdo,
+  author    = {McAleer, Stephen and Lanier, John and Baldi, Pierre and Fox,
+               Roy},
+  title     = {{XDO}: A Double Oracle Algorithm for Extensive-Form Games},
+  booktitle = {Advances in Neural Information Processing Systems 34 (NeurIPS)},
+  year      = {2021},
+  eprint    = {2103.06426},
+  archivePrefix = {arXiv}
+}
+% VERIFIED via NeurIPS 2021 proceedings and arXiv 2103.06426.
+
+@inproceedings{marris2021jpsro,
+  author    = {Marris, Luke and Muller, Paul and Lanctot, Marc and Tuyls, Karl
+               and Graepel, Thore},
+  title     = {Multi-Agent Training beyond Zero-Sum with Correlated
+               Equilibrium Meta-Solvers},
+  booktitle = {Proceedings of the 38th International Conference on Machine
+               Learning (ICML)},
+  series    = {Proceedings of Machine Learning Research},
+  volume    = {139},
+  pages     = {7480--7491},
+  year      = {2021},
+  eprint    = {2106.09435},
+  archivePrefix = {arXiv}
+}
+% VERIFIED via PMLR v139 (marris21a) and arXiv 2106.09435.
+% Cited as "JPSRO" in the manuscript.
+
+@inproceedings{yao2023psd,
+  author    = {Yao, Jian and Liu, Weiming and Fu, Haobo and Yang, Yaodong and
+               McAleer, Stephen and Fu, Qiang and Yang, Wei},
+  title     = {Policy Space Diversity for Non-Transitive Games},
+  booktitle = {Advances in Neural Information Processing Systems 36 (NeurIPS)},
+  year      = {2023},
+  eprint    = {2306.16884},
+  archivePrefix = {arXiv}
+}
+% VERIFIED via NeurIPS 2023 proceedings and arXiv 2306.16884.
+% Cited as "PSD-PSRO" in the manuscript.
+
+@inproceedings{muller2020generalized,
+  author    = {Muller, Paul and Omidshafiei, Shayegan and Rowland, Mark and
+               Tuyls, Karl and P\'{e}rolat, Julien and Liu, Siqi and Hennes,
+               Daniel and Marris, Luke and Lanctot, Marc and Hughes, Edward
+               and Wang, Zhe and Lever, Guy and Heess, Nicolas and Graepel,
+               Thore and Munos, R\'{e}mi},
+  title     = {A Generalized Training Approach for Multiagent Learning},
+  booktitle = {Proceedings of the 8th International Conference on Learning
+               Representations (ICLR)},
+  year      = {2020},
+  eprint    = {1909.12823},
+  archivePrefix = {arXiv}
+}
+% VERIFIED via ICLR 2020 proceedings and arXiv 1909.12823.
+% Introduces alpha-Rank as a PSRO meta-solver.
+
+@inproceedings{bighashdel2024psro,
+  author    = {Bighashdel, Ariyan and Wang, Yongzhao and McAleer, Stephen and
+               Savani, Rahul and Oliehoek, Frans A.},
+  title     = {Policy Space Response Oracles: A Survey},
+  booktitle = {Proceedings of the 33rd International Joint Conference on
+               Artificial Intelligence (IJCAI)},
+  year      = {2024},
+  eprint    = {2403.02227},
+  archivePrefix = {arXiv},
+  doi       = {10.24963/ijcai.2024/880}
+}
+% VERIFIED via IJCAI 2024 proceedings (survey track) and arXiv 2403.02227.
+
+% --- Meta-solvers and equilibrium concepts ---------------------------------
+
+@article{hart2000simple,
+  author  = {Hart, Sergiu and Mas-Colell, Andreu},
+  title   = {A Simple Adaptive Procedure Leading to Correlated Equilibrium},
+  journal = {Econometrica},
+  volume  = {68},
+  number  = {5},
+  pages   = {1127--1150},
+  year    = {2000}
+}
+
+@article{omidshafiei2019alpharank,
+  author  = {Omidshafiei, Shayegan and Papadimitriou, Christos and Piliouras,
+             Georgios and Tuyls, Karl and Rowland, Mark and Lespiau,
+             Jean-Baptiste and Czarnecki, Wojciech M. and Lanctot, Marc and
+             P\'{e}rolat, Julien and Munos, R\'{e}mi},
+  title   = {{$\alpha$-Rank}: Multi-Agent Evaluation by Evolution},
+  journal = {Scientific Reports},
+  volume  = {9},
+  pages   = {9937},
+  year    = {2019},
+  doi     = {10.1038/s41598-019-45619-9}
+}
+% VERIFIED via Nature Scientific Reports DOI 10.1038/s41598-019-45619-9.
+
+% --- Diversity, gamescapes, geometry of games ------------------------------
+
+@inproceedings{balduzzi2019openended,
+  author    = {Balduzzi, David and Garnelo, Marta and Bachrach, Yoram and
+               Czarnecki, Wojciech M. and P\'{e}rolat, Julien and Jaderberg,
+               Max and Graepel, Thore},
+  title     = {Open-Ended Learning in Symmetric Zero-Sum Games},
+  booktitle = {Proceedings of the 36th International Conference on Machine
+               Learning (ICML)},
+  series    = {Proceedings of Machine Learning Research},
+  volume    = {97},
+  pages     = {434--443},
+  year      = {2019},
+  eprint    = {1901.08106},
+  archivePrefix = {arXiv}
+}
+% VERIFIED via PMLR v97 and arXiv 1901.08106. Introduces the empirical
+% gamescape and rectified Nash response.
+
+@inproceedings{czarnecki2020spinning,
+  author    = {Czarnecki, Wojciech M. and Gidel, Gauthier and Tracey, Brendan
+               and Tuyls, Karl and Omidshafiei, Shayegan and Balduzzi, David
+               and Jaderberg, Max},
+  title     = {Real World Games Look Like Spinning Tops},
+  booktitle = {Advances in Neural Information Processing Systems 33 (NeurIPS)},
+  year      = {2020},
+  eprint    = {2004.09468},
+  archivePrefix = {arXiv}
+}
+% VERIFIED via NeurIPS 2020 proceedings and arXiv 2004.09468.
+
+% --- Complexity of equilibrium computation ---------------------------------
+
+@article{daskalakis2009complexity,
+  author  = {Daskalakis, Constantinos and Goldberg, Paul W. and
+             Papadimitriou, Christos H.},
+  title   = {The Complexity of Computing a {N}ash Equilibrium},
+  journal = {SIAM Journal on Computing},
+  volume  = {39},
+  number  = {1},
+  pages   = {195--259},
+  year    = {2009},
+  doi     = {10.1137/070699652}
+}
+% VERIFIED via SIAM DOI 10.1137/070699652. Journal version of the STOC 2006
+% paper establishing PPAD-completeness for multi-player Nash.
+
+@inproceedings{chen2006settling,
+  author    = {Chen, Xi and Deng, Xiaotie},
+  title     = {Settling the Complexity of Two-Player {N}ash Equilibrium},
+  booktitle = {Proceedings of the 47th Annual IEEE Symposium on Foundations
+               of Computer Science (FOCS)},
+  pages     = {261--270},
+  year      = {2006},
+  doi       = {10.1109/FOCS.2006.69}
+}
+% VERIFIED via FOCS 2006 proceedings. Extends PPAD-completeness to bimatrix.
+
+@inproceedings{daskalakis2014counterexample,
+  author    = {Daskalakis, Constantinos and Pan, Qinxuan},
+  title     = {A Counter-Example to {K}arlin's Strong Conjecture for
+               Fictitious Play},
+  booktitle = {Proceedings of the 55th Annual IEEE Symposium on Foundations
+               of Computer Science (FOCS)},
+  pages     = {11--20},
+  year      = {2014},
+  eprint    = {1412.4840},
+  archivePrefix = {arXiv}
+}
+% VERIFIED via arXiv 1412.4840 and FOCS 2014. Shows FP's worst-case rate
+% can be as slow as t^{-1/n} — the book's motivation for going beyond FP.
+
+% --- Learning algorithms ---------------------------------------------------
+
+@inproceedings{zinkevich2007regret,
+  author    = {Zinkevich, Martin and Johanson, Michael and Bowling, Michael
+               and Piccione, Carmelo},
+  title     = {Regret Minimization in Games with Incomplete Information},
+  booktitle = {Advances in Neural Information Processing Systems 20 (NIPS)},
+  year      = {2007}
+}
+
+@article{schulman2017ppo,
+  author  = {Schulman, John and Wolski, Filip and Dhariwal, Prafulla and
+             Radford, Alec and Klimov, Oleg},
+  title   = {Proximal Policy Optimization Algorithms},
+  journal = {arXiv preprint},
+  year    = {2017},
+  eprint  = {1707.06347},
+  archivePrefix = {arXiv}
+}
+
+@inproceedings{schulman2016gae,
+  author    = {Schulman, John and Moritz, Philipp and Levine, Sergey and
+               Jordan, Michael I. and Abbeel, Pieter},
+  title     = {High-Dimensional Continuous Control Using Generalized
+               Advantage Estimation},
+  booktitle = {Proceedings of the 4th International Conference on Learning
+               Representations (ICLR)},
+  year      = {2016},
+  eprint    = {1506.02438},
+  archivePrefix = {arXiv}
+}
+
+% --- Systems & background --------------------------------------------------
+
+@inproceedings{moritz2018ray,
+  author    = {Moritz, Philipp and Nishihara, Robert and Wang, Stephanie and
+               Tumanov, Alexey and Liaw, Richard and Liang, Eric and Elibol,
+               Melih and Yang, Zongheng and Paul, William and Jordan, Michael
+               I. and Stoica, Ion},
+  title     = {{Ray}: A Distributed Framework for Emerging {AI} Applications},
+  booktitle = {Proceedings of the 13th USENIX Symposium on Operating Systems
+               Design and Implementation (OSDI)},
+  pages     = {561--577},
+  year      = {2018}
+}
+
+@inproceedings{amdahl1967validity,
+  author    = {Amdahl, Gene M.},
+  title     = {Validity of the Single Processor Approach to Achieving Large
+               Scale Computing Capabilities},
+  booktitle = {Proceedings of the AFIPS Spring Joint Computer Conference},
+  pages     = {483--485},
+  year      = {1967},
+  doi       = {10.1145/1465482.1465560}
+}
+
+@book{albrecht2024multiagent,
+  author    = {Albrecht, Stefano V. and Christianos, Filippos and Sch\"{a}fer,
+               Lukas},
+  title     = {Multi-Agent Reinforcement Learning: Foundations and Modern
+               Approaches},
+  publisher = {MIT Press},
+  year      = {2024},
+  url       = {https://www.marl-book.com}
+}
+% VERIFIED via MIT Press and marl-book.com. Print edition late 2024;
+% eBook released 2024-12-17 under Creative Commons.

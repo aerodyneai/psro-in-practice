@@ -27,6 +27,7 @@ import numpy as np
 from psrolab.eval import restricted_exploitability
 from psrolab.games import MatrixGame
 from psrolab.meta_solvers import NashSolverLP, SupportEnumerationSolver
+from psrolab.utils.plotstyle import apply_style
 
 HERE = Path(__file__).resolve().parent
 
@@ -58,14 +59,28 @@ def main() -> None:
     parser.add_argument("--smoke", action="store_true",
                         help="write to gitignored *_smoke dirs (config unchanged; "
                              "the full run is already <60s)")
+    parser.add_argument("--figdir", type=str, default=None,
+                        help="override figures directory (ignored when --smoke is set, "
+                             "so smoke never writes to tracked paths)")
+    parser.add_argument("--plot-only", action="store_true",
+                        help="skip solving; regenerate figures from the committed CSV")
     args = parser.parse_args()
     plt.switch_backend("Agg")
+    apply_style()
 
     suffix = "_smoke" if args.smoke else ""
     results_dir = HERE / f"results{suffix}"
-    figures_dir = HERE / f"figures{suffix}"
+    if args.smoke or not args.figdir:
+        figures_dir = HERE / f"figures{suffix}"
+    else:
+        figures_dir = Path(args.figdir)
     results_dir.mkdir(exist_ok=True)
-    figures_dir.mkdir(exist_ok=True)
+    figures_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.plot_only:
+        _plot_from_csv(results_dir / "nash_solutions.csv", figures_dir)
+        print(f"Wrote figures to {figures_dir}")
+        return
 
     solvers = {"support_enumeration": SupportEnumerationSolver(), "lp": NashSolverLP()}
     rows = []
@@ -105,6 +120,18 @@ def main() -> None:
 
     _render_figure(solutions, figures_dir)
     print(f"\nWrote {csv_path} and {figures_dir / 'nash_simplex.(pdf|png)'}")
+
+
+def _plot_from_csv(csv_path: Path, figures_dir: Path) -> None:
+    solutions: dict[str, dict[str, list[np.ndarray]]] = {}
+    with open(csv_path) as f:
+        for row in csv.DictReader(f):
+            game = row["game"]
+            method = row["method"]
+            x = np.array([float(v) for v in row["x"].split(";")])
+            y = np.array([float(v) for v in row["y"].split(";")])
+            solutions.setdefault(game, {})[method] = [x, y]
+    _render_figure(solutions, figures_dir)
 
 
 def _render_figure(solutions: dict, figures_dir: Path) -> None:

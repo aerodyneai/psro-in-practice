@@ -42,6 +42,7 @@ from psrolab.games import MatrixGame, Population
 from psrolab.games.openspiel_wrap import OpenSpielGame
 from psrolab.meta_solvers import ZeroSumProjectionNash
 from psrolab.oracles.diverse_ppo import DiversePPOOracle
+from psrolab.utils.plotstyle import apply_style
 
 HERE = Path(__file__).resolve().parent
 
@@ -74,20 +75,34 @@ def main() -> None:
     parser.add_argument("--diversity-coef", type=float, default=1.0)
     parser.add_argument("--device", type=str, default="cpu")
     parser.add_argument("--smoke", action="store_true", help="tiny config for CI (<60s)")
+    parser.add_argument("--figdir", type=str, default=None,
+                        help="override figures directory (ignored when --smoke is set, "
+                             "so smoke never writes to tracked paths)")
+    parser.add_argument("--plot-only", action="store_true",
+                        help="skip PSRO/training; regenerate figures from the committed CSVs")
     args = parser.parse_args()
     if args.smoke:
         args.iterations, args.oracle_episodes, args.eval_episodes = 2, 800, 50
         args.n_seeds, args.n_strategies = 1, 5
     plt.switch_backend("Agg")
+    apply_style()
 
     est_min = 2 * 2 * args.n_seeds * args.iterations * args.oracle_episodes * 1e-3 / 60
     print(f"Estimated runtime: ~{max(est_min, 0.3):.0f} min", flush=True)
 
     suffix = "_smoke" if args.smoke else ""
     results_dir = HERE / f"results{suffix}"
-    figures_dir = HERE / f"figures{suffix}"
+    if args.smoke or not args.figdir:
+        figures_dir = HERE / f"figures{suffix}"
+    else:
+        figures_dir = Path(args.figdir)
     results_dir.mkdir(exist_ok=True)
-    figures_dir.mkdir(exist_ok=True)
+    figures_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.plot_only:
+        _plot_from_csv(results_dir, figures_dir, args.diversity_coef)
+        print(f"Wrote figures to {figures_dir}")
+        return
 
     matrices = {
         "transitive": transitive_matrix(args.n_strategies),
@@ -181,6 +196,15 @@ def _write(path: Path, rows: list[dict]) -> None:
         writer = csv.DictWriter(f, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
+
+
+def _plot_from_csv(results_dir: Path, figures_dir: Path, coef: float) -> None:
+    with open(results_dir / "diversity_curves.csv") as f:
+        rows = list(csv.DictReader(f))
+    for r in rows:
+        r["seed"] = int(r["seed"])
+        r["iteration"] = int(r["iteration"])
+    _fig(rows, figures_dir, coef)
 
 
 def _fig(rows: list[dict], figures_dir: Path, coef: float) -> None:

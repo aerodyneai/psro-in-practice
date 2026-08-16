@@ -44,6 +44,7 @@ from psrolab.meta_solvers import (
     ZeroSumProjectionNash,
 )
 from psrolab.oracles.tabular_q import TabularQOracle
+from psrolab.utils.plotstyle import apply_style
 
 HERE = Path(__file__).resolve().parent
 
@@ -66,12 +67,18 @@ def main() -> None:
     parser.add_argument("--eval-episodes", type=int, default=2000)
     parser.add_argument("--runtime-sizes", type=str, default="2,5,10,20,40,80")
     parser.add_argument("--smoke", action="store_true", help="tiny config for CI (<60s)")
+    parser.add_argument("--figdir", type=str, default=None,
+                        help="override figures directory (ignored when --smoke is set, "
+                             "so smoke never writes to tracked paths)")
+    parser.add_argument("--plot-only", action="store_true",
+                        help="skip PSRO/training; regenerate figures from the committed CSVs")
     args = parser.parse_args()
     if args.smoke:
         args.iterations, args.oracle_episodes, args.eval_episodes = 2, 1000, 100
         args.n_seeds, args.runtime_sizes = 1, "2,5,10"
     sizes = [int(s) for s in args.runtime_sizes.split(",")]
     plt.switch_backend("Agg")
+    apply_style()
 
     # ~150s per 15-iteration Kuhn run (measured in ch06); timing study ~1 min.
     est_min = len(SOLVERS) * args.n_seeds * args.iterations * 10 / 60 + 1
@@ -79,9 +86,17 @@ def main() -> None:
 
     suffix = "_smoke" if args.smoke else ""
     results_dir = HERE / f"results{suffix}"
-    figures_dir = HERE / f"figures{suffix}"
+    if args.smoke or not args.figdir:
+        figures_dir = HERE / f"figures{suffix}"
+    else:
+        figures_dir = Path(args.figdir)
     results_dir.mkdir(exist_ok=True)
-    figures_dir.mkdir(exist_ok=True)
+    figures_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.plot_only:
+        _plot_from_csv(results_dir, figures_dir)
+        print(f"Wrote figures to {figures_dir}")
+        return
 
     curve_rows = _psro_curves(args)
     _write(results_dir / "solver_curves.csv", curve_rows)
@@ -160,6 +175,18 @@ def _write(path: Path, rows: list[dict]) -> None:
         writer = csv.DictWriter(f, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
+
+
+def _plot_from_csv(results_dir: Path, figures_dir: Path) -> None:
+    with open(results_dir / "solver_curves.csv") as f:
+        curve_rows = list(csv.DictReader(f))
+    for r in curve_rows:
+        r["seed"] = int(r["seed"])
+        r["iteration"] = int(r["iteration"])
+    with open(results_dir / "solver_runtimes.csv") as f:
+        runtime_rows = list(csv.DictReader(f))
+    _fig_curves(curve_rows, figures_dir)
+    _fig_runtimes(runtime_rows, figures_dir)
 
 
 def _fig_curves(rows: list[dict], figures_dir: Path) -> None:

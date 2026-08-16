@@ -3,12 +3,25 @@
 The contract between the manuscript and this repository: every figure and
 table in the book maps to one script invocation here. All commands are run
 from the repository root with the default `--seed 0` (recorded in each CSV's
-provenance) unless noted. Figures are emitted as both `.pdf` (for the book)
-and `.png` (for review) into the listed `figures/` directory; the numbers
-behind each figure are committed in the sibling `results/` CSVs. Approximate
-runtimes are for the reference server (see README hardware notes); every
-script also accepts `--smoke` for a <60 s CI pass that writes only to
-gitignored `*_smoke/` directories.
+provenance) unless noted.
+
+Two figure directories are relevant. **`docs/figures/`** holds the shipped,
+book-ready renders — versioned, one directory, flat filenames. **Every
+`run_chXX.py` accepts `--figdir docs/figures/`** to write there directly;
+combined with `--plot-only` this re-renders from the committed CSVs in
+seconds, without retraining. **`experiments/chXX/figures/`** is scratch —
+overwritten by non-smoke runs, gitignored. `--smoke` always writes to
+`figures_smoke/` regardless of `--figdir`, so CI never touches tracked
+paths.
+
+Regenerate every shipped figure from CSVs:
+
+```bash
+for f in experiments/ch*/run_ch*.py; do python "$f" --plot-only --figdir docs/figures/; done
+```
+
+Approximate runtimes below are for the reference server (see README
+hardware notes); every script also accepts `--smoke` for a <60 s CI pass.
 
 Chapter/figure numbers are placeholders (`Fig. X.y`) until the manuscript
 freezes; the *slug* column is the stable key.
@@ -45,3 +58,14 @@ Notes:
   observed results; the manuscript's prose must stay consistent with those.
 - Determinism: numpy-only experiments are bit-reproducible; torch experiments
   are reproducible on CPU (the settings used for all book figures).
+- **Ch. 8 provenance:** the `nash`/`uniform` rows in `solver_curves.csv` were
+  freshly generated for Ch. 8 (Kuhn poker + tabular-Q oracle, 3 seeds, 15
+  iterations, commit `2533e88`). They are *not* reused from Ch. 6's
+  `kuhn_grid.csv`, which uses different combos and a different seed schedule.
+- **Ch. 13 caveat:** `trajectories.{pdf,png}` and `meta_support.{pdf,png}`
+  cannot be regenerated from committed CSVs alone — the first needs live
+  policies (no on-disk checkpoints), the second needs the per-iteration
+  meta-weight matrix (only support counts are in `psro_metrics.csv`).
+  `--plot-only` falls back to copying the last full-run renders from
+  `experiments/ch13_pursuit_evasion/figures/`. A full non-smoke `run_ch13.py`
+  run (~100 min) is the source of truth for those two.

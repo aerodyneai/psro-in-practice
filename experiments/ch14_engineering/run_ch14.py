@@ -41,6 +41,7 @@ from psrolab.games.pursuit_evasion import PursuitEvasionSim
 from psrolab.meta_solvers import ZeroSumProjectionNash
 from psrolab.oracles.tabular_q import TabularQOracle
 from psrolab.psro_pipeline import run_psro_parallel
+from psrolab.utils.plotstyle import apply_style
 
 HERE = Path(__file__).resolve().parent
 
@@ -104,11 +105,17 @@ def main() -> None:
     parser.add_argument("--oracle-episodes", type=int, default=3000)
     parser.add_argument("--eval-episodes", type=int, default=100)
     parser.add_argument("--smoke", action="store_true", help="tiny config for CI (<60s)")
+    parser.add_argument("--figdir", type=str, default=None,
+                        help="override figures directory (ignored when --smoke is set, "
+                             "so smoke never writes to tracked paths)")
+    parser.add_argument("--plot-only", action="store_true",
+                        help="skip PSRO/training; regenerate figures from the committed CSVs")
     args = parser.parse_args()
     if args.smoke:
         args.iterations, args.kill_at = 4, 2
         args.oracle_episodes, args.eval_episodes = 300, 20
     plt.switch_backend("Agg")
+    apply_style()
     # Three full-run-equivalents (instrumented + uninterrupted + kill/resume
     # pair); ~3ms per tabular training episode at max_steps=30 (measured).
     est_min = 3 * args.iterations * 2 * args.oracle_episodes * 3e-3 / 60
@@ -116,9 +123,17 @@ def main() -> None:
 
     suffix = "_smoke" if args.smoke else ""
     results_dir = HERE / f"results{suffix}"
-    figures_dir = HERE / f"figures{suffix}"
+    if args.smoke or not args.figdir:
+        figures_dir = HERE / f"figures{suffix}"
+    else:
+        figures_dir = Path(args.figdir)
     results_dir.mkdir(exist_ok=True)
-    figures_dir.mkdir(exist_ok=True)
+    figures_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.plot_only:
+        _plot_from_csv(results_dir, figures_dir)
+        print(f"Wrote figures to {figures_dir}")
+        return
 
     evaluator, solver, oracle = _instrumented_run(args)
     _write_cache_csv(results_dir, evaluator)
@@ -174,6 +189,50 @@ def _write_breakdown_csv(results_dir: Path, evaluator, solver, oracle) -> None:
             br = oracle.times[2 * it] + oracle.times[2 * it + 1]
             writer.writerow([it, f"{evaluator.records[it]['eval_s']:.4f}",
                              f"{solver.times[it]:.4f}", f"{br:.4f}"])
+
+
+def _plot_from_csv(results_dir: Path, figures_dir: Path) -> None:
+    """Reconstruct lightweight stubs of evaluator/solver/oracle from the CSVs so
+    the existing `_fig*` helpers work unchanged."""
+    with open(results_dir / "cache_hit_rate.csv") as f:
+        cache_rows = list(csv.DictReader(f))
+    with open(results_dir / "cost_breakdown.csv") as f:
+        cost_rows = list(csv.DictReader(f))
+
+    class _Stub:
+        pass
+
+    evaluator = _Stub()
+    evaluator.records = [
+        {
+            "total_cells": int(r["total_cells"]),
+            "new_cells": int(r["new_cells"]),
+            "hit_rate": float(r["hit_rate"]),
+            "eval_s": 0.0,
+        }
+        for r in cache_rows
+    ]
+    # The breakdown CSV covers the iterations after fill 0; splice its eval_s
+    # into the corresponding records (fill index == iteration index here).
+    for r in cost_rows:
+        it = int(r["iteration"])
+        if it < len(evaluator.records):
+            evaluator.records[it]["eval_s"] = float(r["eval_s"])
+
+    solver = _Stub()
+    # `_fig_breakdown` uses `n = len(solver.times) - 1`; append one dummy entry.
+    solver.times = [float(r["solve_s"]) for r in cost_rows] + [0.0]
+
+    oracle = _Stub()
+    # `_fig_breakdown` sums oracle.times[2i] + oracle.times[2i+1]; encode the
+    # per-iteration total in slot 2i and 0 in slot 2i+1.
+    oracle.times = []
+    for r in cost_rows:
+        oracle.times.append(float(r["br_both_players_s"]))
+        oracle.times.append(0.0)
+
+    _fig_cache(evaluator, figures_dir)
+    _fig_breakdown(evaluator, solver, oracle, figures_dir)
 
 
 def _fig_cache(evaluator: InstrumentedEvaluator, figures_dir: Path) -> None:

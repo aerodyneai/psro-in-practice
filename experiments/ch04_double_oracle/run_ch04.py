@@ -42,6 +42,7 @@ from psrolab import run_psro
 from psrolab.eval import ProfileEvaluator, restricted_exploitability
 from psrolab.games import ExactMatrixOracle, MatrixGame, MatrixGameSim, Population
 from psrolab.meta_solvers import ZeroSumProjectionNash
+from psrolab.utils.plotstyle import apply_style
 
 HERE = Path(__file__).resolve().parent
 CONVERGENCE_TOL = 1e-6
@@ -59,6 +60,11 @@ def main() -> None:
     parser.add_argument("--episodes", type=int, default=100,
                         help="episodes per profile in the noise study (C)")
     parser.add_argument("--smoke", action="store_true", help="tiny config for CI (<60s)")
+    parser.add_argument("--figdir", type=str, default=None,
+                        help="override figures directory (ignored when --smoke is set, "
+                             "so smoke never writes to tracked paths)")
+    parser.add_argument("--plot-only", action="store_true",
+                        help="skip PSRO/training; regenerate figures from the committed CSVs")
     args = parser.parse_args()
     if args.smoke:
         args.sizes, args.n_seeds = "10,20", 2
@@ -75,12 +81,21 @@ def main() -> None:
           f"(sizes={sizes}, {args.n_seeds} seeds each; up to 2x if caps are missed)",
           flush=True)
     plt.switch_backend("Agg")
+    apply_style()
 
     suffix = "_smoke" if args.smoke else ""
     results_dir = HERE / f"results{suffix}"
-    figures_dir = HERE / f"figures{suffix}"
+    if args.smoke or not args.figdir:
+        figures_dir = HERE / f"figures{suffix}"
+    else:
+        figures_dir = Path(args.figdir)
     results_dir.mkdir(exist_ok=True)
-    figures_dir.mkdir(exist_ok=True)
+    figures_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.plot_only:
+        _plot_from_csv(results_dir, figures_dir)
+        print(f"Wrote figures to {figures_dir}")
+        return
 
     conv_rows, trace_rows = _study_convergence(sizes, args)
     _write_rows(results_dir / "convergence_vs_size.csv", conv_rows)
@@ -288,6 +303,28 @@ def _fig_noise_floor(noise_rows: list[dict], figures_dir: Path) -> None:
     ax.set_title("Payoff-estimation noise puts a floor under exploitability")
     ax.legend(frameon=False, fontsize=8)
     _save(fig, figures_dir / "do_noise_floor")
+
+
+def _plot_from_csv(results_dir: Path, figures_dir: Path) -> None:
+    def _read(path: Path) -> list[dict]:
+        with open(path) as f:
+            return list(csv.DictReader(f))
+
+    conv_rows = _read(results_dir / "convergence_vs_size.csv")
+    for r in conv_rows:
+        r["game_size"] = int(r["game_size"])
+        r["population_size"] = int(r["population_size"])
+    trace_rows = _read(results_dir / "exploitability_vs_iteration.csv")
+    for r in trace_rows:
+        r["game_size"] = int(r["game_size"])
+        r["iteration"] = int(r["iteration"])
+    noise_rows = _read(results_dir / "noise_effect.csv")
+    for r in noise_rows:
+        r["noise_std"] = float(r["noise_std"])
+        r["iteration"] = int(r["iteration"])
+    _fig_population_vs_size(conv_rows, figures_dir)
+    _fig_exploitability(trace_rows, figures_dir)
+    _fig_noise_floor(noise_rows, figures_dir)
 
 
 def _save(fig, stem: Path) -> None:

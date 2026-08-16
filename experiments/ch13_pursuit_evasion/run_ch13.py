@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import shutil
 import time
 from pathlib import Path
 
@@ -45,6 +46,7 @@ from psrolab.games.pursuit_evasion import PursuitEvasionSim
 from psrolab.meta_solvers import ZeroSumProjectionNash
 from psrolab.oracles.base import MixtureOpponent
 from psrolab.oracles.ppo import PPOOracle
+from psrolab.utils.plotstyle import apply_style
 
 HERE = Path(__file__).resolve().parent
 
@@ -65,12 +67,18 @@ def main() -> None:
                         help="torch CPU threads; 0 = torch default (measured "
                              "2.4x faster than pinning to 1 here — see NOTES.md)")
     parser.add_argument("--smoke", action="store_true", help="tiny config for CI (<60s)")
+    parser.add_argument("--figdir", type=str, default=None,
+                        help="override figures directory (ignored when --smoke is set, "
+                             "so smoke never writes to tracked paths)")
+    parser.add_argument("--plot-only", action="store_true",
+                        help="skip PSRO/training; regenerate figures from the committed CSVs")
     args = parser.parse_args()
     if args.smoke:
         args.iterations, args.oracle_episodes, args.eval_episodes = 2, 300, 20
         args.probe_episodes, args.hidden, args.snapshot_iterations = 300, 32, "1,2"
     snapshots = [int(s) for s in args.snapshot_iterations.split(",")]
     plt.switch_backend("Agg")
+    apply_style()
 
     if args.torch_threads > 0:
         import torch
@@ -85,9 +93,17 @@ def main() -> None:
 
     suffix = "_smoke" if args.smoke else ""
     results_dir = HERE / f"results{suffix}"
-    figures_dir = HERE / f"figures{suffix}"
+    if args.smoke or not args.figdir:
+        figures_dir = HERE / f"figures{suffix}"
+    else:
+        figures_dir = Path(args.figdir)
     results_dir.mkdir(exist_ok=True)
-    figures_dir.mkdir(exist_ok=True)
+    figures_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.plot_only:
+        _plot_from_csv(results_dir, figures_dir)
+        print(f"Wrote figures to {figures_dir}")
+        return
 
     game = PursuitEvasionSim(seed=args.seed)
     metas: list[list[np.ndarray]] = []
@@ -187,6 +203,31 @@ def _write_probe(path: Path, probe: dict) -> None:
 def _sample_joint_policies(result, meta, rng):
     idx = [int(rng.choice(len(meta[p]), p=meta[p])) for p in (0, 1)]
     return [result.population.policies[p][idx[p]] for p in (0, 1)]
+
+
+def _plot_from_csv(results_dir: Path, figures_dir: Path) -> None:
+    """Regenerate what we can from CSVs; fall back to copying figures that
+    require in-memory objects (policy checkpoints, meta-weight matrices) which
+    are not persisted to disk."""
+    with open(results_dir / "psro_metrics.csv") as f:
+        metric_rows = list(csv.DictReader(f))
+    tournament = [
+        float(r["restricted_exploitability_vs_final_population"]) for r in metric_rows
+    ]
+    with open(results_dir / "br_probe.csv") as f:
+        probe_rows = list(csv.DictReader(f))
+    probe = {k: float(v) for k, v in probe_rows[0].items()}
+    _fig_proxy(tournament, probe, figures_dir)
+
+    source_figures_dir = HERE / "figures"
+    for stem in ("trajectories", "meta_support"):
+        for ext in ("pdf", "png"):
+            src = source_figures_dir / f"{stem}.{ext}"
+            dst = figures_dir / f"{stem}.{ext}"
+            if src.exists() and src.resolve() != dst.resolve():
+                shutil.copyfile(src, dst)
+            elif not src.exists():
+                print(f"warning: {src} not found; skipping {stem}.{ext}")
 
 
 def _fig_trajectories(game, result, metas, snapshots, figures_dir, seed) -> None:

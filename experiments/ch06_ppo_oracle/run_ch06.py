@@ -37,6 +37,7 @@ from psrolab.games.openspiel_wrap import OpenSpielGame
 from psrolab.meta_solvers import UniformSolver, ZeroSumProjectionNash
 from psrolab.oracles.ppo import PPOOracle
 from psrolab.oracles.tabular_q import TabularQOracle
+from psrolab.utils.plotstyle import apply_style
 
 HERE = Path(__file__).resolve().parent
 
@@ -52,11 +53,17 @@ def main() -> None:
                         help="episodes per payoff-table cell")
     parser.add_argument("--device", type=str, default="auto", help="PPO device")
     parser.add_argument("--smoke", action="store_true", help="tiny config for CI (<60s)")
+    parser.add_argument("--figdir", type=str, default=None,
+                        help="override figures directory (ignored when --smoke is set, "
+                             "so smoke never writes to tracked paths)")
+    parser.add_argument("--plot-only", action="store_true",
+                        help="skip PSRO/training; regenerate figures from the committed CSVs")
     args = parser.parse_args()
     if args.smoke:
         args.iterations, args.oracle_episodes, args.eval_episodes = 3, 1500, 200
         args.n_seeds = 1
     plt.switch_backend("Agg")
+    apply_style()
 
     # PPO dominates the cost; calibrated on the reference server (CPU).
     est_min = args.n_seeds * (
@@ -67,9 +74,17 @@ def main() -> None:
 
     suffix = "_smoke" if args.smoke else ""
     results_dir = HERE / f"results{suffix}"
-    figures_dir = HERE / f"figures{suffix}"
+    if args.smoke or not args.figdir:
+        figures_dir = HERE / f"figures{suffix}"
+    else:
+        figures_dir = Path(args.figdir)
     results_dir.mkdir(exist_ok=True)
-    figures_dir.mkdir(exist_ok=True)
+    figures_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.plot_only:
+        _plot_from_csv(results_dir, figures_dir)
+        print(f"Wrote figures to {figures_dir}")
+        return
 
     combos = {
         ("uniform", "tabular_q"): lambda: (UniformSolver(), _tabular(args)),
@@ -128,6 +143,15 @@ def _tabular(args) -> TabularQOracle:
 
 def _ppo(args) -> PPOOracle:
     return PPOOracle(total_episodes=args.oracle_episodes, device=args.device)
+
+
+def _plot_from_csv(results_dir: Path, figures_dir: Path) -> None:
+    with open(results_dir / "kuhn_grid.csv") as f:
+        rows = list(csv.DictReader(f))
+    for r in rows:
+        r["seed"] = int(r["seed"])
+        r["iteration"] = int(r["iteration"])
+    _fig_grid(rows, figures_dir)
 
 
 def _fig_grid(rows: list[dict], figures_dir: Path) -> None:

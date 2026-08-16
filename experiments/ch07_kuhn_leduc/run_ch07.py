@@ -35,6 +35,7 @@ from psrolab.eval.openspiel_exploitability import full_exploitability
 from psrolab.games.openspiel_wrap import OpenSpielGame
 from psrolab.meta_solvers import ZeroSumProjectionNash
 from psrolab.oracles.ppo import PPOOracle
+from psrolab.utils.plotstyle import apply_style
 
 HERE = Path(__file__).resolve().parent
 
@@ -51,11 +52,17 @@ def main() -> None:
     parser.add_argument("--hidden", type=int, default=128, help="PPO MLP width")
     parser.add_argument("--device", type=str, default="auto", help="PPO device")
     parser.add_argument("--smoke", action="store_true", help="tiny config for CI (<60s)")
+    parser.add_argument("--figdir", type=str, default=None,
+                        help="override figures directory (ignored when --smoke is set, "
+                             "so smoke never writes to tracked paths)")
+    parser.add_argument("--plot-only", action="store_true",
+                        help="skip PSRO/training; regenerate figures from the committed CSVs")
     args = parser.parse_args()
     if args.smoke:
         args.iterations, args.oracle_episodes, args.eval_episodes = 2, 1000, 100
         args.hidden, args.n_seeds = 32, 1
     plt.switch_backend("Agg")
+    apply_style()
 
     # Calibrated on the reference server (CPU): ~1.6ms per PPO training
     # episode incl. updates; evaluation episodes ~1ms. Default config: ~70 min.
@@ -66,9 +73,17 @@ def main() -> None:
 
     suffix = "_smoke" if args.smoke else ""
     results_dir = HERE / f"results{suffix}"
-    figures_dir = HERE / f"figures{suffix}"
+    if args.smoke or not args.figdir:
+        figures_dir = HERE / f"figures{suffix}"
+    else:
+        figures_dir = Path(args.figdir)
     results_dir.mkdir(exist_ok=True)
-    figures_dir.mkdir(exist_ok=True)
+    figures_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.plot_only:
+        _plot_from_csv(results_dir, figures_dir)
+        print(f"Wrote figures to {figures_dir}")
+        return
 
     rows = []
     for s in range(args.n_seeds):
@@ -111,6 +126,14 @@ def main() -> None:
         writer.writerows(rows)
     _fig(rows, figures_dir)
     print(f"Wrote {csv_path} and figures to {figures_dir}")
+
+
+def _plot_from_csv(results_dir: Path, figures_dir: Path) -> None:
+    with open(results_dir / "leduc_nash_ppo.csv") as f:
+        rows = list(csv.DictReader(f))
+    for r in rows:
+        r["seed"] = int(r["seed"])
+    _fig(rows, figures_dir)
 
 
 def _fig(rows: list[dict], figures_dir: Path) -> None:

@@ -50,6 +50,7 @@ from psrolab.meta_solvers import (
 )
 from psrolab.oracles.diverse_ppo import DiversePPOOracle
 from psrolab.oracles.ppo import PPOOracle
+from psrolab.utils.plotstyle import apply_style
 
 HERE = Path(__file__).resolve().parent
 
@@ -78,6 +79,11 @@ def main() -> None:
     parser.add_argument("--diversity-coef", type=float, default=1.0)
     parser.add_argument("--last-k", type=int, default=3)
     parser.add_argument("--smoke", action="store_true", help="tiny config for CI (<60s)")
+    parser.add_argument("--figdir", type=str, default=None,
+                        help="override figures directory (ignored when --smoke is set, "
+                             "so smoke never writes to tracked paths)")
+    parser.add_argument("--plot-only", action="store_true",
+                        help="skip PSRO/training; regenerate figures from the committed CSVs")
     args = parser.parse_args()
     if args.smoke:
         args.n_seeds, args.iterations = 1, 2
@@ -86,6 +92,7 @@ def main() -> None:
     variants = args.variants.split(",")
     games = args.games.split(",")
     plt.switch_backend("Agg")
+    apply_style()
 
     per_run_min = {"leduc": args.iterations * args.oracle_episodes * 2 * 1.6e-3 / 60 + 2,
                    "cyclic": args.iterations * args.oracle_episodes * 2 * 0.4e-3 / 60 + 1}
@@ -95,9 +102,17 @@ def main() -> None:
 
     suffix = "_smoke" if args.smoke else ""
     results_dir = HERE / f"results{suffix}"
-    figures_dir = HERE / f"figures{suffix}"
+    if args.smoke or not args.figdir:
+        figures_dir = HERE / f"figures{suffix}"
+    else:
+        figures_dir = Path(args.figdir)
     results_dir.mkdir(exist_ok=True)
-    figures_dir.mkdir(exist_ok=True)
+    figures_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.plot_only:
+        _plot_from_csv(results_dir, figures_dir)
+        print(f"Wrote figures to {figures_dir}")
+        return
 
     rows = []
     for game_name in games:
@@ -254,6 +269,18 @@ def _write_latex(path: Path, summary: dict, games: list[str], args) -> None:
             lines.append(variant.replace("_", r"\_") + " & " + " & ".join(cells) + r" \\")
     lines += [r"\bottomrule", r"\end{tabular}", ""]
     path.write_text("\n".join(lines))
+
+
+def _plot_from_csv(results_dir: Path, figures_dir: Path) -> None:
+    with open(results_dir / "shootout.csv") as f:
+        rows = list(csv.DictReader(f))
+    for r in rows:
+        r["seed"] = int(r["seed"])
+    games = []
+    for r in rows:
+        if r["game"] not in games:
+            games.append(r["game"])
+    _fig(rows, games, figures_dir)
 
 
 def _fig(rows: list[dict], games: list[str], figures_dir: Path) -> None:

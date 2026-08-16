@@ -31,6 +31,7 @@ import numpy as np
 from psrolab.baselines import FictitiousPlay
 from psrolab.eval import restricted_exploitability
 from psrolab.games import MatrixGame
+from psrolab.utils.plotstyle import apply_style
 
 HERE = Path(__file__).resolve().parent
 SIMPLEX_VERTICES = np.array([[0.0, 0.0], [1.0, 0.0], [0.5, np.sqrt(3) / 2]])
@@ -42,16 +43,30 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0, help="unused; FP is deterministic")
     parser.add_argument("--iterations", type=int, default=5000)
     parser.add_argument("--smoke", action="store_true", help="tiny config for CI (<60s)")
+    parser.add_argument("--figdir", type=str, default=None,
+                        help="override figures directory (ignored when --smoke is set, "
+                             "so smoke never writes to tracked paths)")
+    parser.add_argument("--plot-only", action="store_true",
+                        help="skip PSRO/training; regenerate figures from the committed CSVs")
     args = parser.parse_args()
     if args.smoke:
         args.iterations = 200
     plt.switch_backend("Agg")
+    apply_style()
 
     suffix = "_smoke" if args.smoke else ""
     results_dir = HERE / f"results{suffix}"
-    figures_dir = HERE / f"figures{suffix}"
+    if args.smoke or not args.figdir:
+        figures_dir = HERE / f"figures{suffix}"
+    else:
+        figures_dir = Path(args.figdir)
     results_dir.mkdir(exist_ok=True)
-    figures_dir.mkdir(exist_ok=True)
+    figures_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.plot_only:
+        _plot_from_csv(results_dir, figures_dir)
+        print(f"Wrote figures to {figures_dir}")
+        return
 
     rps = MatrixGame(
         payoffs=np.stack([(a := np.array([[0, -1, 1], [1, 0, -1], [-1, 1, 0]], float)), -a])
@@ -153,6 +168,33 @@ def _fig_exploitability(runs: dict, figures_dir: Path) -> None:
     ax.set_title(r"FP exploitability decays roughly like $1/\sqrt{t}$")
     ax.legend(frameon=False)
     _save(fig, figures_dir / "fp_exploitability")
+
+
+def _plot_from_csv(results_dir: Path, figures_dir: Path) -> None:
+    runs = {}
+    csv_files = {
+        "rps": ("fp_rps.csv", RPS_LABELS),
+        "matching_pennies": ("fp_matching_pennies.csv", ["Heads", "Tails"]),
+    }
+    for name, (fname, labels) in csv_files.items():
+        with open(results_dir / fname) as f:
+            reader = list(csv.DictReader(f))
+        n = len(reader)
+        avgs = [np.zeros((n, len(labels))), np.zeros((n, len(labels)))]
+        br = np.zeros((n, 2), dtype=int)
+        exploit = np.zeros(n)
+        for t, row in enumerate(reader):
+            for p in range(2):
+                for i, lab in enumerate(labels):
+                    avgs[p][t, i] = float(row[f"p{p}_avg_{lab.lower()}"])
+            br[t, 0] = int(row["p0_best_response"])
+            br[t, 1] = int(row["p1_best_response"])
+            exploit[t] = float(row["full_exploitability"])
+        from psrolab.baselines.fp import FPResult
+        runs[name] = (FPResult(averages=avgs, best_responses=br), exploit)
+    _fig_convergence(runs["rps"][0], figures_dir)
+    _fig_trajectory(runs["rps"][0], figures_dir)
+    _fig_exploitability(runs, figures_dir)
 
 
 def _save(fig, stem: Path) -> None:

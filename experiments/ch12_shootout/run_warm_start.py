@@ -40,6 +40,7 @@ from psrolab.games.openspiel_wrap import OpenSpielGame
 from psrolab.meta_solvers import ZeroSumProjectionNash
 from psrolab.oracles.diverse_ppo import _action_probs, _total_variation
 from psrolab.oracles.ppo import PPOOracle
+from psrolab.utils.parallel import fan_out
 from psrolab.utils.plotstyle import apply_style
 
 HERE = Path(__file__).resolve().parent
@@ -64,6 +65,9 @@ def main() -> None:
     parser.add_argument("--eval-episodes", type=int, default=1000)
     parser.add_argument("--span-samples", type=int, default=50,
                         help="observations to sample per player for the span metric")
+    parser.add_argument("--workers", type=int, default=1,
+                        help="parallel worker processes across "
+                             "(game, warm_start, seed) tuples; 1 = serial")
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--figdir", type=str, default=None)
     parser.add_argument("--plot-only", action="store_true")
@@ -92,14 +96,49 @@ def main() -> None:
         return
 
     games = args.games.split(",")
-    rows = []
-    for game_name in games:
-        for warm in (False, True):
-            for s in range(args.n_seeds):
-                rows.append(_run(game_name, warm, args.seed + s, args))
-                _write(results_dir / "warm_start.csv", rows)
+    csv_path = results_dir / "warm_start.csv"
+    existing = _load_existing(csv_path)
+    done = {(r["game"], int(r["warm_start"]), int(r["seed"]))
+            for r in existing}
+    tasks = [(game_name, int(warm), args.seed + s)
+             for game_name in games
+             for warm in (False, True)
+             for s in range(args.n_seeds)
+             if (game_name, int(warm), args.seed + s) not in done]
+
+    if not tasks:
+        print(f"All runs already in {csv_path}; nothing to do.")
+        rows = existing
+    else:
+        print(f"Dispatching {len(tasks)} runs on {args.workers} worker(s). "
+              f"Progress written to {csv_path}.", flush=True)
+        new_rows: list[dict] = []
+        args_dict = vars(args)
+        def _on_result(row, done_count, total):
+            new_rows.append(row)
+            _write(csv_path, existing + new_rows)
+            tag = "warm" if int(row["warm_start"]) else "scratch"
+            print(f"[{done_count}/{total}] {row['game']}/{tag}/seed{row['seed']}: "
+                  f"e_G={row['final_full_exploitability']}, "
+                  f"span={row['population_span_tv']}", flush=True)
+        fan_out(tasks, _run_worker, args_dict, args.workers, _on_result)
+        rows = existing + new_rows
+
     _fig(rows, figures_dir)
-    print(f"Wrote {results_dir}/warm_start.csv and figures to {figures_dir}")
+    print(f"Wrote {csv_path} and figures to {figures_dir}")
+
+
+def _load_existing(csv_path: Path) -> list[dict]:
+    if not csv_path.exists():
+        return []
+    with open(csv_path) as f:
+        return list(csv.DictReader(f))
+
+
+def _run_worker(game_name: str, warm_start: int, seed: int,
+                args_dict: dict) -> dict:
+    return _run(game_name, bool(warm_start), seed,
+                argparse.Namespace(**args_dict))
 
 
 def _run(game_name: str, warm_start: bool, seed: int, args) -> dict:

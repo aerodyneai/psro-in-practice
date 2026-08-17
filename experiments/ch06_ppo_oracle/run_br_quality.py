@@ -37,6 +37,7 @@ from psrolab.games.openspiel_wrap import OpenSpielGame
 from psrolab.meta_solvers import ZeroSumProjectionNash
 from psrolab.oracles.ppo import PPOOracle
 from psrolab.oracles.tabular_q import TabularQOracle
+from psrolab.utils.parallel import fan_out
 from psrolab.utils.plotstyle import apply_style
 
 HERE = Path(__file__).resolve().parent
@@ -56,6 +57,9 @@ def main() -> None:
     parser.add_argument("--target-player", type=int, default=0)
     parser.add_argument("--force-rebuild", action="store_true",
                         help="rebuild reference target even if pickle exists")
+    parser.add_argument("--workers", type=int, default=1,
+                        help="parallel worker processes across "
+                             "(oracle, n_episodes, seed) tuples; 1 = serial")
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--figdir", type=str, default=None)
     parser.add_argument("--plot-only", action="store_true")
@@ -103,15 +107,55 @@ def main() -> None:
     print(f"Reference target: player {args.target_player}'s exact-BR value = "
           f"{br_exact_value:.6f}")
 
-    rows: list[dict] = []
-    for oracle_name in ("ppo", "tabular_q"):
-        for n_ep in grid:
-            for s in range(args.n_seeds):
-                rows.append(_run(oracle_name, n_ep, args.seed + s,
-                                 game, reference, br_exact_value, args))
-                _write(results_dir / "br_quality.csv", rows)
+    csv_path = results_dir / "br_quality.csv"
+    existing = _load_existing(csv_path)
+    done = {(r["oracle"], int(r["n_episodes"]), int(r["seed"]))
+            for r in existing}
+    tasks = [(oracle_name, n_ep, args.seed + s)
+             for oracle_name in ("ppo", "tabular_q")
+             for n_ep in grid
+             for s in range(args.n_seeds)
+             if (oracle_name, n_ep, args.seed + s) not in done]
+
+    if not tasks:
+        print(f"All runs already in {csv_path}; nothing to do.")
+        rows = existing
+    else:
+        print(f"Dispatching {len(tasks)} runs on {args.workers} worker(s). "
+              f"Progress written to {csv_path}.", flush=True)
+        new_rows: list[dict] = []
+        args_dict = vars(args)
+        # Cache reference-target values workers need but shouldn't rebuild.
+        args_dict["_reference_pkl_path"] = str(ref_path)
+        args_dict["_br_exact_value"] = br_exact_value
+        def _on_result(row, done_count, total):
+            new_rows.append(row)
+            _write(csv_path, existing + new_rows)
+            print(f"[{done_count}/{total}] {row['oracle']} "
+                  f"n_ep={row['n_episodes']} seed {row['seed']}: "
+                  f"gap = {row['value_gap']}", flush=True)
+        fan_out(tasks, _run_worker, args_dict, args.workers, _on_result)
+        rows = existing + new_rows
+
     _fig(rows, figures_dir)
-    print(f"Wrote {results_dir}/br_quality.csv and figures to {figures_dir}")
+    print(f"Wrote {csv_path} and figures to {figures_dir}")
+
+
+def _load_existing(csv_path: Path) -> list[dict]:
+    if not csv_path.exists():
+        return []
+    with open(csv_path) as f:
+        return list(csv.DictReader(f))
+
+
+def _run_worker(oracle_name: str, n_episodes: int, seed: int,
+                args_dict: dict) -> dict:
+    args = argparse.Namespace(**args_dict)
+    with open(args._reference_pkl_path, "rb") as f:
+        reference = pickle.load(f)
+    game = OpenSpielGame("kuhn_poker", seed=args.seed)
+    return _run(oracle_name, n_episodes, seed, game, reference,
+                args._br_exact_value, args)
 
 
 def _build_reference(args) -> dict:

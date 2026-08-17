@@ -34,6 +34,7 @@ from psrolab.games.openspiel_wrap import OpenSpielGame
 from psrolab.meta_solvers import ZeroSumProjectionNash
 from psrolab.oracles.ppo import PPOOracle
 from psrolab.oracles.tabular_q import TabularQOracle
+from psrolab.utils.parallel import fan_out
 from psrolab.utils.plotstyle import apply_style
 
 HERE = Path(__file__).resolve().parent
@@ -60,6 +61,9 @@ def main() -> None:
                              "excluded from budget accounting)")
     parser.add_argument("--oracles", type=str, default="ppo,tabular_q",
                         help="comma-separated oracles to run in parallel arms")
+    parser.add_argument("--workers", type=int, default=1,
+                        help="parallel worker processes across "
+                             "(oracle, split, seed) tuples; 1 = serial")
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--figdir", type=str, default=None)
     parser.add_argument("--plot-only", action="store_true")
@@ -94,14 +98,50 @@ def main() -> None:
         print(f"Wrote figures to {figures_dir}")
         return
 
-    rows: list[dict] = []
-    for oracle_name in oracles:
-        for iters, ep in splits:
-            for s in range(args.n_seeds):
-                rows.append(_run(oracle_name, iters, ep, args.seed + s, args))
-                _write(results_dir / "budget_split.csv", rows)
+    csv_path = results_dir / "budget_split.csv"
+    existing = _load_existing(csv_path)
+    done = {(r["oracle"], int(r["iterations"]), int(r["oracle_episodes"]),
+             int(r["seed"])) for r in existing}
+    tasks = [(oracle_name, iters, ep, args.seed + s)
+             for oracle_name in oracles
+             for iters, ep in splits
+             for s in range(args.n_seeds)
+             if (oracle_name, iters, ep, args.seed + s) not in done]
+
+    if not tasks:
+        print(f"All {len(oracles) * len(splits) * args.n_seeds} runs already "
+              f"in {csv_path}; nothing to do.")
+        rows = existing
+    else:
+        print(f"Dispatching {len(tasks)} runs on {args.workers} worker(s). "
+              f"Progress written to {csv_path}.", flush=True)
+        new_rows: list[dict] = []
+        args_dict = vars(args)
+        def _on_result(row, done_count, total):
+            new_rows.append(row)
+            _write(csv_path, existing + new_rows)
+            print(f"[{done_count}/{total}] {row['oracle']} split "
+                  f"{row['iterations']}x{row['oracle_episodes']} "
+                  f"seed {row['seed']}: e_G = {row['final_full_exploitability']}",
+                  flush=True)
+        fan_out(tasks, _run_worker, args_dict, args.workers, _on_result)
+        rows = existing + new_rows
+
     _fig(rows, figures_dir, args.total_episodes)
-    print(f"Wrote {results_dir}/budget_split.csv and figures to {figures_dir}")
+    print(f"Wrote {csv_path} and figures to {figures_dir}")
+
+
+def _load_existing(csv_path: Path) -> list[dict]:
+    if not csv_path.exists():
+        return []
+    with open(csv_path) as f:
+        return list(csv.DictReader(f))
+
+
+def _run_worker(oracle_name: str, iterations: int, oracle_episodes: int,
+                seed: int, args_dict: dict) -> dict:
+    return _run(oracle_name, iterations, oracle_episodes, seed,
+                argparse.Namespace(**args_dict))
 
 
 def _run(oracle_name: str, iterations: int, oracle_episodes: int, seed: int,

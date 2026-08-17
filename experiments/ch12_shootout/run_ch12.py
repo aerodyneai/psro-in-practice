@@ -30,7 +30,9 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
 import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -58,6 +60,13 @@ VARIANTS = ["psro_nash", "psro_uniform", "psro_rm", "psro_alpharank",
             "psro_diverse", "last_k", "self_play"]
 
 
+def _budget_tag(iterations: int, oracle_episodes: int) -> str:
+    """Short human-readable tag for a (iterations, episodes) budget point."""
+    def compact(n: int) -> str:
+        return f"{n // 1000}k" if n >= 1000 and n % 1000 == 0 else str(n)
+    return f"{iterations}x{compact(oracle_episodes)}"
+
+
 def cyclic_matrix(n: int = 9) -> np.ndarray:
     a = np.zeros((n, n))
     for offset in range(1, n // 2 + 1):
@@ -78,6 +87,13 @@ def main() -> None:
     parser.add_argument("--eval-episodes", type=int, default=1000)
     parser.add_argument("--diversity-coef", type=float, default=1.0)
     parser.add_argument("--last-k", type=int, default=3)
+    parser.add_argument("--workers", type=int, default=1,
+                        help="parallel worker processes across (game, variant, seed) "
+                             "tuples; 1 = serial. Each worker gets torch.set_num_threads(1).")
+    parser.add_argument("--budget-tag", type=str, default=None,
+                        help="human-readable tag for this budget point (e.g., '10x15k'). "
+                             "Auto-derived from --iterations and --oracle-episodes when "
+                             "omitted. Rows with different tags coexist in shootout.csv.")
     parser.add_argument("--smoke", action="store_true", help="tiny config for CI (<60s)")
     parser.add_argument("--figdir", type=str, default=None,
                         help="override figures directory (ignored when --smoke is set, "
@@ -114,18 +130,113 @@ def main() -> None:
         print(f"Wrote figures to {figures_dir}")
         return
 
-    rows = []
-    for game_name in games:
-        for variant in variants:
-            for s in range(args.n_seeds):
-                rows.append(_run(game_name, variant, args.seed + s, args))
-                _append_csv(results_dir / "shootout.csv", rows)  # crash-safe
+    budget_tag = args.budget_tag or _budget_tag(args.iterations, args.oracle_episodes)
+    args.budget_tag = budget_tag  # stamped onto every row emitted by this call
+
+    csv_path = results_dir / "shootout.csv"
+    existing_rows = _load_existing(csv_path)
+    done = {(r["game"], r["variant"], int(r["seed"]), r.get("budget_tag", ""))
+            for r in existing_rows}
+    tasks = [(g, v, args.seed + s)
+             for g in games for v in variants for s in range(args.n_seeds)
+             if (g, v, args.seed + s, budget_tag) not in done]
+    if not tasks:
+        print(f"All {len(games) * len(variants) * args.n_seeds} runs for "
+              f"budget {budget_tag} already in {csv_path}; nothing to do.")
+        rows = existing_rows
+    else:
+        print(f"Dispatching {len(tasks)} runs on {args.workers} worker(s) "
+              f"(budget tag: {budget_tag}). Progress written to {csv_path}.",
+              flush=True)
+        new_rows = _dispatch(tasks, args, csv_path, existing_rows)
+        rows = existing_rows + new_rows
+
     summary = _summarize(rows)
     _write_summary(results_dir, summary)
-    _write_latex(results_dir / "shootout_table.tex", summary, games, args)
+    _write_latex_all(results_dir, summary)
     _fig(rows, games, figures_dir)
     _print_summary(summary, games)
     print(f"Wrote CSVs + LaTeX to {results_dir} and figures to {figures_dir}")
+
+
+def _dispatch(tasks, args, csv_path, existing_rows):
+    """Fan out (game, variant, seed) runs across worker processes.
+
+    Rows returned by workers are appended incrementally to csv_path (main
+    process only, no lock needed) so a killed run leaves a valid CSV of
+    everything done so far — the next invocation resumes.
+    """
+    new_rows: list[dict] = []
+    if args.workers <= 1:
+        for game_name, variant, seed in tasks:
+            row = _run(game_name, variant, seed, args)
+            new_rows.append(row)
+            _write_csv(csv_path, existing_rows + new_rows)
+        return new_rows
+
+    args_dict = vars(args)
+    with ProcessPoolExecutor(
+        max_workers=args.workers, initializer=_worker_init
+    ) as pool:
+        futures = {
+            pool.submit(_run_from_dict, game, variant, seed, args_dict):
+                (game, variant, seed)
+            for game, variant, seed in tasks
+        }
+        done_count = 0
+        for future in as_completed(futures):
+            row = future.result()
+            new_rows.append(row)
+            done_count += 1
+            _write_csv(csv_path, existing_rows + new_rows)
+            print(f"[{done_count}/{len(tasks)}] wrote row for "
+                  f"{row['game']}/{row['variant']}/seed{row['seed']}",
+                  flush=True)
+    return new_rows
+
+
+def _worker_init() -> None:
+    """Pin each worker to a single BLAS / torch thread to avoid CPU
+    oversubscription when many workers run PPO simultaneously."""
+    os.environ.setdefault("OMP_NUM_THREADS", "1")
+    os.environ.setdefault("MKL_NUM_THREADS", "1")
+    try:
+        import torch
+        torch.set_num_threads(1)
+    except Exception:
+        pass
+
+
+def _run_from_dict(game_name: str, variant: str, seed: int, args_dict: dict) -> dict:
+    """Wrapper that reconstructs the argparse.Namespace inside the worker."""
+    args = argparse.Namespace(**args_dict)
+    return _run(game_name, variant, seed, args)
+
+
+def _load_existing(csv_path: Path) -> list[dict]:
+    if not csv_path.exists():
+        return []
+    with open(csv_path) as f:
+        rows = list(csv.DictReader(f))
+    for r in rows:
+        r.setdefault("budget_tag", _budget_tag(
+            int(r.get("budget_iterations", 0)),
+            int(r.get("budget_train_episodes", 0)) // (2 * max(1, int(r.get("budget_iterations", 1)))),
+        ))
+    return rows
+
+
+def _write_csv(csv_path: Path, rows: list[dict]) -> None:
+    if not rows:
+        return
+    columns = ["game", "variant", "seed", "budget_tag",
+               "final_full_exploitability", "budget_iterations",
+               "budget_train_episodes", "budget_eval_episodes_per_cell",
+               "wall_clock_s"]
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=columns, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 def _build_variant(variant: str, args, game_name: str):
@@ -183,6 +294,8 @@ def _run(game_name: str, variant: str, seed: int, args) -> dict:
         "game": game_name,
         "variant": variant,
         "seed": seed,
+        "budget_tag": getattr(args, "budget_tag", None)
+                       or _budget_tag(args.iterations, args.oracle_episodes),
         "final_full_exploitability": f"{exploit:.6f}",
         "budget_iterations": args.iterations,
         "budget_train_episodes": 2 * args.iterations * args.oracle_episodes,
@@ -216,17 +329,11 @@ def _matrix_exploitability(
     return restricted_exploitability(matrix, mixtures)
 
 
-def _append_csv(path: Path, rows: list[dict]) -> None:
-    with open(path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=list(rows[0]))
-        writer.writeheader()
-        writer.writerows(rows)
-
-
 def _summarize(rows: list[dict]) -> dict:
+    """Group by (game, variant, budget_tag) → (mean, std, n_seeds)."""
     summary: dict = {}
     for row in rows:
-        key = (row["game"], row["variant"])
+        key = (row["game"], row["variant"], row.get("budget_tag", ""))
         summary.setdefault(key, []).append(float(row["final_full_exploitability"]))
     return {
         key: (float(np.mean(vals)), float(np.std(vals)), len(vals))
@@ -237,28 +344,62 @@ def _summarize(rows: list[dict]) -> dict:
 def _write_summary(results_dir: Path, summary: dict) -> None:
     with open(results_dir / "shootout_summary.csv", "w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["game", "variant", "mean_full_exploitability",
+        writer.writerow(["game", "variant", "budget_tag",
+                         "mean_full_exploitability",
                          "std_full_exploitability", "n_seeds"])
-        for (game_name, variant), (mean, std, n) in sorted(summary.items()):
-            writer.writerow([game_name, variant, f"{mean:.6f}", f"{std:.6f}", n])
+        for (game_name, variant, tag), (mean, std, n) in sorted(summary.items()):
+            writer.writerow([game_name, variant, tag, f"{mean:.6f}",
+                             f"{std:.6f}", n])
 
 
-def _write_latex(path: Path, summary: dict, games: list[str], args) -> None:
+def _write_latex_all(results_dir: Path, summary: dict) -> None:
+    """Emit one LaTeX table per budget_tag present in the data.
+
+    The canonical filename `shootout_table.tex` always tracks the smallest
+    budget (the book's original headline); larger budgets emit
+    `shootout_table_{budget_tag}.tex` alongside so §12.6's comparison
+    across budget points has both files to draw on.
+    """
+    tags_seen: list[str] = []
+    for (_, _, tag) in summary:
+        if tag not in tags_seen:
+            tags_seen.append(tag)
+    if not tags_seen:
+        return
+    # smallest budget first (by iterations parsed from the tag prefix)
+    def _tag_iters(tag: str) -> int:
+        try:
+            return int(tag.split("x", 1)[0])
+        except ValueError:
+            return 0
+    tags_seen.sort(key=_tag_iters)
+    for i, tag in enumerate(tags_seen):
+        sub = {k: v for k, v in summary.items() if k[2] == tag}
+        path = (results_dir / "shootout_table.tex" if i == 0
+                else results_dir / f"shootout_table_{tag}.tex")
+        _write_latex(path, sub, tag)
+
+
+def _write_latex(path: Path, summary: dict, budget_tag: str) -> None:
+    games: list[str] = []
+    for (g, _, _) in summary:
+        if g not in games:
+            games.append(g)
     lines = [
         "% Auto-generated by experiments/ch12_shootout/run_ch12.py — do not edit.",
-        (f"% Budget: {args.iterations} iterations x 2 players x "
-         f"{args.oracle_episodes} episodes; {args.n_seeds} seeds."),
+        f"% Budget tag: {budget_tag}.",
         r"\begin{tabular}{l" + "c" * len(games) + "}",
         r"\toprule",
         "variant & " + " & ".join(games) + r" \\",
         r"\midrule",
     ]
-    best = {g: min(mean for (gn, _), (mean, _, _) in summary.items() if gn == g)
+    best = {g: min(mean for (gn, _, _), (mean, _, _) in summary.items()
+                   if gn == g)
             for g in games}
     for variant in VARIANTS:
         cells = []
         for game_name in games:
-            entry = summary.get((game_name, variant))
+            entry = summary.get((game_name, variant, budget_tag))
             if entry is None:
                 cells.append("---")
                 continue
@@ -272,8 +413,7 @@ def _write_latex(path: Path, summary: dict, games: list[str], args) -> None:
 
 
 def _plot_from_csv(results_dir: Path, figures_dir: Path) -> None:
-    with open(results_dir / "shootout.csv") as f:
-        rows = list(csv.DictReader(f))
+    rows = _load_existing(results_dir / "shootout.csv")
     for r in rows:
         r["seed"] = int(r["seed"])
     games = []
@@ -284,25 +424,42 @@ def _plot_from_csv(results_dir: Path, figures_dir: Path) -> None:
 
 
 def _fig(rows: list[dict], games: list[str], figures_dir: Path) -> None:
+    tags: list[str] = []
+    for r in rows:
+        t = r.get("budget_tag", "")
+        if t not in tags:
+            tags.append(t)
     fig, axes = plt.subplots(1, len(games), figsize=(5.5 * len(games), 4.2),
                              squeeze=False)
+    palette = plt.get_cmap("tab10").colors
+    bar_w = 0.8 / max(1, len(tags))
     for ax, game_name in zip(axes[0], games):
         sub = [r for r in rows if r["game"] == game_name]
         variants = [v for v in VARIANTS if any(r["variant"] == v for r in sub)]
-        means, stds = [], []
-        for i, variant in enumerate(variants):
-            vals = [float(r["final_full_exploitability"]) for r in sub
-                    if r["variant"] == variant]
-            means.append(np.mean(vals))
-            stds.append(np.std(vals))
-            ax.scatter([i] * len(vals), vals, color="k", s=10, zorder=3, alpha=0.6)
-        ax.bar(range(len(variants)), means, yerr=stds, capsize=3,
-               color="tab:blue", alpha=0.75)
-        ax.set_xticks(range(len(variants)))
+        x = np.arange(len(variants))
+        for ti, tag in enumerate(tags):
+            means, stds = [], []
+            for i, variant in enumerate(variants):
+                vals = [float(r["final_full_exploitability"]) for r in sub
+                        if r["variant"] == variant
+                        and r.get("budget_tag", "") == tag]
+                if not vals:
+                    means.append(np.nan); stds.append(0.0); continue
+                means.append(np.mean(vals)); stds.append(np.std(vals))
+                offset = (ti - (len(tags) - 1) / 2) * bar_w
+                ax.scatter(np.full(len(vals), i + offset), vals,
+                           color="k", s=8, zorder=3, alpha=0.55)
+            offset = (ti - (len(tags) - 1) / 2) * bar_w
+            ax.bar(x + offset, means, width=bar_w * 0.95, yerr=stds,
+                   capsize=2, color=palette[ti % 10], alpha=0.8,
+                   label=tag if len(tags) > 1 else None)
+        ax.set_xticks(x)
         ax.set_xticklabels([v.replace("psro_", "") for v in variants],
                            rotation=30, ha="right", fontsize=8)
         ax.set_title(game_name)
         ax.set_ylabel("final full_exploitability")
+        if len(tags) > 1:
+            ax.legend(title="budget", fontsize=8)
     fig.suptitle("The shootout: equal budget, honest metric")
     fig.tight_layout()
     for ext in ("pdf", "png"):
@@ -311,13 +468,19 @@ def _fig(rows: list[dict], games: list[str], figures_dir: Path) -> None:
 
 
 def _print_summary(summary: dict, games: list[str]) -> None:
-    print(f"\n{'variant':>16} " + " ".join(f"{g:>18}" for g in games))
-    for variant in VARIANTS:
-        cells = []
-        for game_name in games:
-            entry = summary.get((game_name, variant))
-            cells.append(f"{entry[0]:.3f} ± {entry[1]:.3f}" if entry else "—")
-        print(f"{variant:>16} " + " ".join(f"{c:>18}" for c in cells))
+    tags: list[str] = []
+    for (_, _, tag) in summary:
+        if tag not in tags:
+            tags.append(tag)
+    for tag in tags:
+        print(f"\n[budget {tag}]  {'variant':>16} "
+              + " ".join(f"{g:>18}" for g in games))
+        for variant in VARIANTS:
+            cells = []
+            for game_name in games:
+                entry = summary.get((game_name, variant, tag))
+                cells.append(f"{entry[0]:.3f} ± {entry[1]:.3f}" if entry else "—")
+            print(f"{'':>10}{variant:>16} " + " ".join(f"{c:>18}" for c in cells))
 
 
 if __name__ == "__main__":

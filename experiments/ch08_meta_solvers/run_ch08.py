@@ -65,7 +65,10 @@ def main() -> None:
     parser.add_argument("--iterations", type=int, default=15)
     parser.add_argument("--oracle-episodes", type=int, default=20000)
     parser.add_argument("--eval-episodes", type=int, default=2000)
-    parser.add_argument("--runtime-sizes", type=str, default="2,5,10,20,40,80")
+    parser.add_argument("--runtime-sizes", type=str,
+                        default="2,5,10,15,20,40,80",
+                        help="game sizes for the solve-cost table (size 15 was "
+                             "interpolated in the book's Table 8.1 v1 — now measured)")
     parser.add_argument("--smoke", action="store_true", help="tiny config for CI (<60s)")
     parser.add_argument("--figdir", type=str, default=None,
                         help="override figures directory (ignored when --smoke is set, "

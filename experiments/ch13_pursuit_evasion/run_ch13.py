@@ -63,6 +63,11 @@ def main() -> None:
     parser.add_argument("--device", type=str, default="cpu")
     parser.add_argument("--snapshot-iterations", type=str, default="1,5,15",
                         help="iterations rendered in the trajectory figure")
+    parser.add_argument("--snapshot-populations", action="store_true",
+                        help="pickle populations at each --snapshot-iterations "
+                             "boundary into results/population_snapshots/. When "
+                             "on, --plot-only can re-render trajectories from "
+                             "disk without re-running PSRO (~100 min).")
     parser.add_argument("--torch-threads", type=int, default=0,
                         help="torch CPU threads; 0 = torch default (measured "
                              "2.4x faster than pinning to 1 here — see NOTES.md)")
@@ -108,11 +113,25 @@ def main() -> None:
     game = PursuitEvasionSim(seed=args.seed)
     metas: list[list[np.ndarray]] = []
 
+    snapshot_dir = None
+    if args.snapshot_populations:
+        snapshot_dir = results_dir / "population_snapshots"
+        snapshot_dir.mkdir(exist_ok=True)
+
     def record_meta(it, pop, meta):
         metas.append([m.copy() for m in meta])
         supports = (int((meta[0] > 1e-3).sum()), int((meta[1] > 1e-3).sum()))
         print(f"iteration {it:>2}: population {pop.sizes()}, Nash supports "
               f"{supports}, elapsed {time.perf_counter() - t0:.0f}s", flush=True)
+        if snapshot_dir is not None and (it + 1) in snapshots:
+            import torch
+            torch.save({
+                "iteration": it + 1,
+                "meta_strategies": [m.copy() for m in meta],
+                "policies": pop.policies,   # nn.Modules pickle fine
+                "payoff_table": pop.payoff_table.copy()
+                                if pop.payoff_table is not None else None,
+            }, snapshot_dir / f"iter_{it + 1:02d}.pt")
         return {"support_p0": supports[0], "support_p1": supports[1]}
 
     t0 = time.perf_counter()

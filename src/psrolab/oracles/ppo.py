@@ -124,6 +124,7 @@ class PPOOracle(Oracle):
         gae_lambda: float = 0.95,
         hidden: int = 64,
         device: str = "auto",
+        warm_start: bool = False,
     ) -> None:
         self.total_episodes = total_episodes
         self.episodes_per_update = episodes_per_update
@@ -139,6 +140,12 @@ class PPOOracle(Oracle):
         self.device = torch.device(
             ("cuda" if torch.cuda.is_available() else "cpu") if device == "auto" else device
         )
+        # When warm_start=True, we cache each player's most recent BR net
+        # state_dict and re-load it at the start of the *next* call for that
+        # player. Ch. 12's §12.4 ablation quantifies how much this saves in
+        # training episodes vs how much it costs in population diversity.
+        self.warm_start = warm_start
+        self._last_state_dicts: dict[int, dict] = {}
 
     def best_response(
         self,
@@ -155,6 +162,8 @@ class PPOOracle(Oracle):
         torch.manual_seed(seed)
 
         net = ActorCritic(obs_dim, n_actions, self.hidden).to(self.device)
+        if self.warm_start and player in self._last_state_dicts:
+            net.load_state_dict(self._last_state_dicts[player])
         optimizer = torch.optim.Adam(net.parameters(), lr=self.lr)
         opponents = MixtureOpponent(population, meta_strategies, exclude_player=player)
 
@@ -165,6 +174,10 @@ class PPOOracle(Oracle):
             self._update(net, optimizer, rollout)
             episodes_done += batch
 
+        if self.warm_start:
+            self._last_state_dicts[player] = {
+                k: v.detach().clone() for k, v in net.state_dict().items()
+            }
         return PPOPolicy(net, seed=seed + 1)
 
     def _collect(

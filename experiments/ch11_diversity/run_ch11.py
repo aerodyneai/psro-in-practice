@@ -38,6 +38,7 @@ import numpy as np
 
 from psrolab import run_psro
 from psrolab.eval import ProfileEvaluator, restricted_exploitability
+from psrolab.eval.decomposition import cyclic_mass_ratio
 from psrolab.games import MatrixGame, Population
 from psrolab.games.openspiel_wrap import OpenSpielGame
 from psrolab.meta_solvers import ZeroSumProjectionNash
@@ -114,8 +115,77 @@ def main() -> None:
             for s in range(args.n_seeds):
                 rows += _run(game_name, a, coef, args.seed + s, args)
     _write(results_dir / "diversity_curves.csv", rows)
+
+    cmass_rows = _cyclic_mass_dashboard(matrices, args)
+    _write(results_dir / "cyclic_mass.csv", cmass_rows)
+
     _fig(rows, figures_dir, args.diversity_coef)
+    _fig_cyclic_mass(cmass_rows, figures_dir)
     print(f"Wrote {results_dir / 'diversity_curves.csv'} and figures to {figures_dir}")
+
+
+def _cyclic_mass_dashboard(matrices: dict[str, np.ndarray], args) -> list[dict]:
+    """Compute the cyclic-mass ratio the chapter uses as its cheap diagnostic.
+
+    Two flavours per game:
+      - `full_matrix`: ratio of the whole-game payoff matrix (this is a
+        game constant; readers can compute it in <1 second before deciding
+        whether to invest 2.3x compute in a diverse oracle).
+      - `random_subset_k`: expected ratio when only k strategies are
+        available (mean over 200 random subsets of size k). This is the
+        curve a PSRO population would trace out if it added strategies
+        uniformly at random — a useful null baseline for the population
+        evolution figures.
+    """
+    rows: list[dict] = []
+    rng = np.random.default_rng(args.seed)
+    for game_name, a in matrices.items():
+        full = cyclic_mass_ratio(a)
+        rows.append({
+            "game": game_name, "flavour": "full_matrix",
+            "k": a.shape[0], "cyclic_mass": f"{full:.6f}",
+        })
+        for k in range(2, a.shape[0] + 1):
+            samples = []
+            for _ in range(200):
+                idx = rng.choice(a.shape[0], size=k, replace=False)
+                sub = a[np.ix_(idx, idx)]
+                samples.append(cyclic_mass_ratio(sub))
+            rows.append({
+                "game": game_name, "flavour": "random_subset_mean",
+                "k": k, "cyclic_mass": f"{float(np.mean(samples)):.6f}",
+            })
+    return rows
+
+
+def _fig_cyclic_mass(cmass_rows: list[dict], figures_dir: Path) -> None:
+    games = sorted({r["game"] for r in cmass_rows})
+    fig, ax = plt.subplots(figsize=(6.0, 4.0))
+    palette = {"transitive": "tab:gray", "cyclic": "tab:green"}
+    for game_name in games:
+        sub = [r for r in cmass_rows if r["game"] == game_name
+               and r["flavour"] == "random_subset_mean"]
+        sub.sort(key=lambda r: int(r["k"]))
+        xs = [int(r["k"]) for r in sub]
+        ys = [float(r["cyclic_mass"]) for r in sub]
+        ax.plot(xs, ys, marker="o", color=palette.get(game_name, "tab:blue"),
+                label=f"{game_name}")
+        full_row = next(r for r in cmass_rows if r["game"] == game_name
+                        and r["flavour"] == "full_matrix")
+        ax.axhline(float(full_row["cyclic_mass"]),
+                   color=palette.get(game_name, "tab:blue"),
+                   ls="--", lw=0.8, alpha=0.6)
+    ax.set_xlabel("meta-game size k (number of strategies)")
+    ax.set_ylabel("cyclic-mass ratio")
+    ax.set_ylim(-0.05, 1.05)
+    ax.set_title("Ch. 11's cheap diagnostic: transitive vs cyclic games\n"
+                 "dashed = full-game ratio (constant); "
+                 "solid = mean over random k-subsets")
+    ax.legend(frameon=False)
+    fig.tight_layout()
+    for ext in ("pdf", "png"):
+        fig.savefig(figures_dir / f"cyclic_mass.{ext}", dpi=200)
+    plt.close(fig)
 
 
 def _run(game_name: str, a: np.ndarray, coef: float, seed: int, args) -> list[dict]:
@@ -205,6 +275,10 @@ def _plot_from_csv(results_dir: Path, figures_dir: Path, coef: float) -> None:
         r["seed"] = int(r["seed"])
         r["iteration"] = int(r["iteration"])
     _fig(rows, figures_dir, coef)
+    cyclic_path = results_dir / "cyclic_mass.csv"
+    if cyclic_path.exists():
+        with open(cyclic_path) as f:
+            _fig_cyclic_mass(list(csv.DictReader(f)), figures_dir)
 
 
 def _fig(rows: list[dict], figures_dir: Path, coef: float) -> None:

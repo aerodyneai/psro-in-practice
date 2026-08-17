@@ -39,6 +39,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from psrolab import run_psro
+from psrolab.baselines.fp import FictitiousPlay
 from psrolab.eval import ProfileEvaluator, restricted_exploitability
 from psrolab.games import ExactMatrixOracle, MatrixGame, MatrixGameSim, Population
 from psrolab.meta_solvers import ZeroSumProjectionNash
@@ -59,6 +60,16 @@ def main() -> None:
     parser.add_argument("--noise-iterations", type=int, default=40)
     parser.add_argument("--episodes", type=int, default=100,
                         help="episodes per profile in the noise study (C)")
+    parser.add_argument("--budget-sizes", type=str, default="10,50",
+                        help="game sizes for study B (equal-budget DO vs FP)")
+    parser.add_argument("--budget-n-seeds", type=int, default=5,
+                        help="random games per size for study B")
+    parser.add_argument("--budget-br-calls", type=int, default=60,
+                        help="best-response calls per player, per algorithm, in study B")
+    parser.add_argument("--only-budget", action="store_true",
+                        help="run only study B (equal-budget DO vs FP), skip A/C — "
+                             "useful when the other CSVs are already committed and "
+                             "you're iterating on B alone")
     parser.add_argument("--smoke", action="store_true", help="tiny config for CI (<60s)")
     parser.add_argument("--figdir", type=str, default=None,
                         help="override figures directory (ignored when --smoke is set, "
@@ -97,15 +108,22 @@ def main() -> None:
         print(f"Wrote figures to {figures_dir}")
         return
 
-    conv_rows, trace_rows = _study_convergence(sizes, args)
-    _write_rows(results_dir / "convergence_vs_size.csv", conv_rows)
-    _write_rows(results_dir / "exploitability_vs_iteration.csv", trace_rows)
-    noise_rows = _study_noise(noise_levels, args)
-    _write_rows(results_dir / "noise_effect.csv", noise_rows)
+    if not args.only_budget:
+        conv_rows, trace_rows = _study_convergence(sizes, args)
+        _write_rows(results_dir / "convergence_vs_size.csv", conv_rows)
+        _write_rows(results_dir / "exploitability_vs_iteration.csv", trace_rows)
+        noise_rows = _study_noise(noise_levels, args)
+        _write_rows(results_dir / "noise_effect.csv", noise_rows)
 
-    _fig_population_vs_size(conv_rows, figures_dir)
-    _fig_exploitability(trace_rows, figures_dir)
-    _fig_noise_floor(noise_rows, figures_dir)
+    budget_sizes = [int(s) for s in args.budget_sizes.split(",")]
+    budget_rows = _study_equal_budget(budget_sizes, args)
+    _write_rows(results_dir / "do_vs_fp_equal_budget.csv", budget_rows)
+
+    if not args.only_budget:
+        _fig_population_vs_size(conv_rows, figures_dir)
+        _fig_exploitability(trace_rows, figures_dir)
+        _fig_noise_floor(noise_rows, figures_dir)
+    _fig_do_vs_fp(budget_rows, figures_dir)
     print(f"Wrote CSVs to {results_dir} and figures to {figures_dir}")
 
 
@@ -245,6 +263,80 @@ def _study_noise(noise_levels: list[float], args) -> list[dict]:
     return rows
 
 
+def _study_equal_budget(sizes: list[int], args) -> list[dict]:
+    """Ch. 4 study B: DO vs FP on the same random games, equal BR budget.
+
+    For each (size, seed): build one random zero-sum matrix game, then run
+    both algorithms for ``--budget-br-calls`` iterations. Both make one BR
+    call per player per iteration, so per-iteration BR-call counts match.
+    Full-game exploitability is measured of *the algorithm's announced
+    solution* per iteration: DO's current meta-strategy over its population
+    (lifted to the full game), FP's time-averaged strategy.
+
+    The point is the *shape* difference. DO's exploitability is monotone
+    non-increasing in the algorithm's ideal but noisy in practice — adding
+    a BR can temporarily raise the LP-Nash's exploitability if the payoff
+    table gains a strategy that shifts the Nash into an as-yet-unresponded
+    corner. FP's is a smooth polynomial decay.
+    """
+    n_seeds = args.budget_n_seeds if not args.smoke else min(2, args.budget_n_seeds)
+    n_iters = args.budget_br_calls if not args.smoke else min(8, args.budget_br_calls)
+    rows: list[dict] = []
+    for n in sizes:
+        for s in range(n_seeds):
+            game = make_random_zero_sum(n, seed=2000 * n + args.seed + s)
+            do_history = _do_trace(game, seed=args.seed + s, n_iterations=n_iters)
+            fp_history = _fp_trace(game, n_iterations=n_iters)
+            for k in range(n_iters):
+                rows.append({
+                    "game_size": n,
+                    "seed": args.seed + s,
+                    "algorithm": "double_oracle",
+                    "br_calls": k + 1,
+                    "full_exploitability":
+                        f"{do_history[k]['full_exploitability']:.6e}",
+                })
+                rows.append({
+                    "game_size": n,
+                    "seed": args.seed + s,
+                    "algorithm": "fictitious_play",
+                    "br_calls": k + 1,
+                    "full_exploitability":
+                        f"{fp_history[k]['full_exploitability']:.6e}",
+                })
+            do_final = do_history[-1]["full_exploitability"]
+            fp_final = fp_history[-1]["full_exploitability"]
+            print(f"budget study, size {n} seed {s}: "
+                  f"DO final={do_final:.2e}, FP final={fp_final:.2e}",
+                  flush=True)
+    return rows
+
+
+def _do_trace(game: MatrixGame, seed: int, n_iterations: int) -> list[dict]:
+    """Run DO for a fixed number of iterations, return per-iteration entries.
+
+    Unlike `_run_until_converged`, this obeys the caller's iteration cap
+    exactly — the point of study B is the announced solution at each BR
+    call, not the converged answer.
+    """
+    result = run_double_oracle(game, seed=seed, n_iterations=n_iterations)
+    return result.history
+
+
+def _fp_trace(game: MatrixGame, n_iterations: int) -> list[dict]:
+    """Run FP and return per-iteration full-game exploitability of the time-average."""
+    fp = FictitiousPlay(game)
+    result = fp.run(n_iterations=n_iterations)
+    history = []
+    for t in range(n_iterations):
+        mixtures = [result.averages[p][t] for p in range(2)]
+        history.append({
+            "iteration": t,
+            "full_exploitability": restricted_exploitability(game, mixtures),
+        })
+    return history
+
+
 def _write_rows(path: Path, rows: list[dict]) -> None:
     with open(path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0]))
@@ -305,6 +397,40 @@ def _fig_noise_floor(noise_rows: list[dict], figures_dir: Path) -> None:
     _save(fig, figures_dir / "do_noise_floor")
 
 
+def _fig_do_vs_fp(rows: list[dict], figures_dir: Path) -> None:
+    sizes = sorted({int(r["game_size"]) for r in rows})
+    fig, axes = plt.subplots(1, len(sizes), figsize=(5.5 * len(sizes), 4.0),
+                             squeeze=False)
+    palette = {"double_oracle": "tab:blue", "fictitious_play": "tab:orange"}
+    labels = {"double_oracle": "double oracle", "fictitious_play": "fictitious play"}
+    for ax, n in zip(axes[0], sizes):
+        sub = [r for r in rows if int(r["game_size"]) == n]
+        seeds = sorted({int(r["seed"]) for r in sub})
+        for algo in ("double_oracle", "fictitious_play"):
+            curves = []
+            for s in seeds:
+                trace = [(int(r["br_calls"]),
+                          max(float(r["full_exploitability"]), LOG_FLOOR))
+                         for r in sub if r["algorithm"] == algo
+                         and int(r["seed"]) == s]
+                trace.sort()
+                xs = np.array([t[0] for t in trace])
+                ys = np.array([t[1] for t in trace])
+                ax.plot(xs, ys, color=palette[algo], alpha=0.25, lw=0.8)
+                curves.append(ys)
+            if curves:
+                geo = np.exp(np.mean(np.log(np.stack(curves)), axis=0))
+                ax.plot(xs, geo, color=palette[algo], lw=2.0, label=labels[algo])
+        ax.set_yscale("log")
+        ax.set_xlabel("best-response calls per player")
+        ax.set_ylabel("full_exploitability of announced solution")
+        ax.set_title(f"n = {n}")
+        ax.legend(frameon=False, fontsize=9)
+    fig.suptitle("DO stops at convergence with jagged descent; "
+                 "FP keeps polishing on a polynomial curve")
+    _save(fig, figures_dir / "do_vs_fp_equal_budget")
+
+
 def _plot_from_csv(results_dir: Path, figures_dir: Path) -> None:
     def _read(path: Path) -> list[dict]:
         with open(path) as f:
@@ -325,6 +451,10 @@ def _plot_from_csv(results_dir: Path, figures_dir: Path) -> None:
     _fig_population_vs_size(conv_rows, figures_dir)
     _fig_exploitability(trace_rows, figures_dir)
     _fig_noise_floor(noise_rows, figures_dir)
+    budget_path = results_dir / "do_vs_fp_equal_budget.csv"
+    if budget_path.exists():
+        budget_rows = _read(budget_path)
+        _fig_do_vs_fp(budget_rows, figures_dir)
 
 
 def _save(fig, stem: Path) -> None:
